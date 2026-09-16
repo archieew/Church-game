@@ -38,8 +38,50 @@ export async function generateQuestion(topic, category = "mixed", difficulty = "
   });
 }
 
+function getOfflineGame() {
+  const stored = localStorage.getItem("bqb_offline_game");
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function setOfflineGame(game) {
+  if (game) {
+    localStorage.setItem("bqb_offline_game", JSON.stringify(game));
+  } else {
+    localStorage.removeItem("bqb_offline_game");
+  }
+}
+
+function getOfflinePlayers() {
+  const stored = localStorage.getItem("bqb_offline_players");
+  if (stored) {
+    try {
+      return JSON.parse(stored);
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function setOfflinePlayers(players) {
+  localStorage.setItem("bqb_offline_players", JSON.stringify(players));
+}
+
 export async function createGame(displayName, timerSeconds = 15) {
-  if (!supabase) return { game: null, player: null, offline: true };
+  if (!supabase) {
+    const roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const game = { id: `offline-${Date.now()}`, room_code: roomCode, status: "lobby", current_question: 0, total_questions: 10, question_set: [], timer_seconds: timerSeconds, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, admin_connected: false, created_at: new Date().toISOString() };
+    setOfflineGame(game);
+    setOfflinePlayers([]);
+    return { game, player: null, offline: true };
+  }
 
   const roomCode = Math.random().toString(36).slice(2, 8).toUpperCase();
   const { data: game, error: gameError } = await supabase
@@ -53,7 +95,17 @@ export async function createGame(displayName, timerSeconds = 15) {
 }
 
 export async function joinGame(roomCode, displayName) {
-  if (!supabase) return { game: null, player: null, offline: true };
+  if (!supabase) {
+    const game = getOfflineGame();
+    if (!game) throw new Error("That room could not be found.");
+    if (game.status !== "lobby") throw new Error("This game has already started.");
+    const players = getOfflinePlayers();
+    if (players.length >= 2) throw new Error("This room already has two players.");
+    const player = { id: `offline-player-${Date.now()}`, game_id: game.id, display_name: displayName, score: 0, connected: true, joined_at: new Date().toISOString() };
+    players.push(player);
+    setOfflinePlayers(players);
+    return { game, player, offline: true };
+  }
 
   const { data: game, error: gameError } = await supabase
     .from("games")
@@ -83,7 +135,10 @@ export async function joinGame(roomCode, displayName) {
 }
 
 export async function listPlayers(gameId) {
-  if (!supabase || !gameId) return [];
+  if (!supabase || !gameId) {
+    // Offline: return players from localStorage
+    return getOfflinePlayers();
+  }
   const { data, error } = await supabase
     .from("players")
     .select("id, display_name")
@@ -106,13 +161,32 @@ export async function saveLockedAnswer(gameId, playerId, questionIndex, selected
 }
 
 export async function updateGame(gameId, updates) {
-  if (!supabase || !gameId) return;
+  if (!supabase || !gameId) {
+    // Offline: update localStorage
+    const game = getOfflineGame();
+    if (game) {
+      Object.assign(game, updates);
+      setOfflineGame(game);
+    }
+    return;
+  }
   const { error } = await supabase.from("games").update(updates).eq("id", gameId);
   if (error) throw error;
 }
 
 export async function claimBuzzer(gameId, playerId) {
-  if (!supabase || !gameId || !playerId) return false;
+  if (!supabase || !gameId || !playerId) {
+    // Offline: check and set buzz in localStorage
+    const game = getOfflineGame();
+    if (game && !game.buzzed_player_id) {
+      game.buzzed_player_id = playerId;
+      game.buzzed_at = new Date().toISOString();
+      game.status = "answering";
+      setOfflineGame(game);
+      return true;
+    }
+    return false;
+  }
   const { data, error } = await supabase
     .from("games")
     .update({ buzzed_player_id: playerId, buzzed_at: new Date().toISOString(), status: "answering" })

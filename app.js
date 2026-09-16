@@ -251,6 +251,13 @@ function startLobbyPolling() {
   }, 2000);
 }
 
+function stopLobbyPolling() {
+  if (lobbyRefreshId) {
+    window.clearInterval(lobbyRefreshId);
+    lobbyRefreshId = 0;
+  }
+}
+
 function startQuizPolling() {
   if (!activeGame || !isHost) return;
   stopQuizPolling();
@@ -348,7 +355,8 @@ async function createRoom() {
   try {
     const result = await createGame("", questionTimeLimit);
     if (result.offline) {
-      throw new Error("Online room service is unavailable. Please refresh and try again.");
+      // Offline mode: generate local questions from questionBank
+      result.game.question_set = questionBank.slice(0, 10);
     }
     setRoomState(result.game, result.player);
     saveSession(result.game, result.player);
@@ -368,7 +376,7 @@ async function joinRoom() {
   try {
     const result = await joinGame(document.querySelector(".code-input").value.trim(), document.querySelector("#join input[type=\"text\"]").value.trim() || "Player");
     if (result.offline) {
-      throw new Error("Online room service is unavailable. Please refresh and try again.");
+      // Offline mode: game already has question_set
     }
     setRoomState(result.game, result.player);
     saveSession(result.game, result.player);
