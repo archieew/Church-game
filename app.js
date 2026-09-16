@@ -31,6 +31,92 @@ let isHost = false;
 let lobbyRefreshId = 0;
 let realtimeSubscribed = false;
 
+function saveSession(game, player) {
+  if (game) localStorage.setItem("bqb_room_code", game.room_code);
+  if (player) localStorage.setItem("bqb_player_id", player.id);
+  localStorage.setItem("bqb_is_host", String(isHost));
+}
+
+function clearSession() {
+  localStorage.removeItem("bqb_room_code");
+  localStorage.removeItem("bqb_player_id");
+  localStorage.removeItem("bqb_is_host");
+}
+
+async function tryRejoinSession() {
+  const roomCode = localStorage.getItem("bqb_room_code");
+  const playerId = localStorage.getItem("bqb_player_id");
+  const wasHost = localStorage.getItem("bqb_is_host") === "true";
+  if (!roomCode) return false;
+  try {
+    if (wasHost) {
+      const { data: game } = await supabase.from("games").select("*").eq("room_code", roomCode).single();
+      if (game) {
+        setRoomState(game, null);
+        showScreen("lobby");
+        return true;
+      }
+    } else if (playerId) {
+      const { data: player } = await supabase.from("players").select("*, games(*)").eq("id", playerId).single();
+      if (player && player.games) {
+        setRoomState(player.games, player);
+        showScreen("lobby");
+        return true;
+      }
+    }
+  } catch {
+    clearSession();
+  }
+  return false;
+}
+
+async function loadRoomsList() {
+  const list = document.querySelector("#rooms-list");
+  const loading = document.querySelector("#rooms-loading");
+  const empty = document.querySelector("#rooms-empty");
+  loading.hidden = false;
+  empty.hidden = true;
+  list.innerHTML = "";
+  try {
+    const { data: games } = await supabase
+      .from("games")
+      .select("id, room_code, status, total_questions, current_question, created_at")
+      .in("status", ["waiting", "answering"])
+      .order("created_at", { ascending: false })
+      .limit(20);
+    if (!games || games.length === 0) {
+      loading.hidden = true;
+      empty.hidden = false;
+      return;
+    }
+    loading.hidden = true;
+    games.forEach((game) => {
+      const li = document.createElement("li");
+      li.style.cssText = "padding:12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:#fff;display:flex;justify-content:space-between;align-items:center";
+      const playersText = game.status === "answering" ? "In progress" : "Waiting for players";
+      li.innerHTML = `
+        <div>
+          <strong>${game.room_code}</strong>
+          <small style="display:block;color:var(--muted);font-size:12px;margin-top:4px">${playersText} · ${game.total_questions || 10} questions</small>
+        </div>
+        <button class="button button-secondary" data-room-code="${game.room_code}">Join</button>
+      `;
+      list.appendChild(li);
+    });
+    list.querySelectorAll("button[data-room-code]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelector(".code-input").value = btn.dataset.roomCode;
+        showScreen("join");
+        document.querySelector("#join input[type=\"text\"]").focus();
+      });
+    });
+  } catch (cause) {
+    loading.hidden = true;
+    empty.hidden = false;
+    empty.textContent = `Failed to load rooms: ${cause.message}`;
+  }
+}
+
 async function renderLobbyPlayers() {
   if (!activeGame) return;
   const playersPanel = document.querySelector(".players-panel");
@@ -211,6 +297,7 @@ async function createRoom() {
       throw new Error("Online room service is unavailable. Please refresh and try again.");
     }
     setRoomState(result.game, result.player);
+    saveSession(result.game, result.player);
     showScreen("lobby");
   } catch (cause) {
     error.textContent = cause.message || "Unable to create the room.";
@@ -230,6 +317,7 @@ async function joinRoom() {
       throw new Error("Online room service is unavailable. Please refresh and try again.");
     }
     setRoomState(result.game, result.player);
+    saveSession(result.game, result.player);
     showScreen("lobby");
   } catch (cause) {
     error.textContent = cause.message || "Unable to join the room.";
@@ -244,6 +332,9 @@ function showScreen(id) {
     startLobbyPolling();
   } else {
     stopLobbyPolling();
+  }
+  if (id === "rooms") {
+    loadRoomsList();
   }
   if (id === "quiz") {
     if (currentQuestion >= questionBank.length) {
@@ -560,6 +651,11 @@ document.querySelector("#join-room").addEventListener("click", (event) => {
 document.querySelector("#refresh-players").addEventListener("click", () => {
   renderLobbyPlayers().catch((cause) => {
     document.querySelector("#join-error").textContent = cause.message || "Unable to load players.";
+  });
+});
+document.querySelector("#rejoin-room").addEventListener("click", () => {
+  tryRejoinSession().catch((cause) => {
+    document.querySelector("#join-error").textContent = cause.message || "No saved room found.";
   });
 });
 

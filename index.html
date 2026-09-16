@@ -43,6 +43,8 @@
           <div class="hero-actions">
             <button class="button button-primary button-large" data-screen="create">Create a game <span>→</span></button>
             <button class="button button-secondary button-large" data-screen="join">Join with a code</button>
+            <button class="button button-outline button-large" data-screen="rooms">View rooms</button>
+            <button class="button button-outline button-large" id="rejoin-room" hidden>Rejoin my room</button>
           </div>
           <div class="social-proof">
             <div class="avatar-stack">
@@ -83,6 +85,17 @@
           <span class="quote-mark">“</span>
           <p>Iron sharpens iron, and one person sharpens another.</p>
           <small>Proverbs 27:17</small>
+        </div>
+      </section>
+
+      <section class="screen compact-screen" id="rooms">
+        <div class="form-panel">
+          <button class="back-link" data-screen="welcome">← Back home</button>
+          <span class="eyebrow">Open rooms</span>
+          <h2>Available<br /><span>rooms</span></h2>
+          <p class="muted" id="rooms-loading">Loading rooms…</p>
+          <ul id="rooms-list" style="list-style:none;padding:0;margin-top:16px"></ul>
+          <p class="muted" id="rooms-empty" hidden>No open rooms. <a href="#" data-screen="create">Create one?</a></p>
         </div>
       </section>
 
