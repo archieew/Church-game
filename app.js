@@ -92,22 +92,47 @@ async function loadRoomsList() {
     loading.hidden = true;
     games.forEach((game) => {
       const li = document.createElement("li");
-      li.style.cssText = "padding:12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:#fff;display:flex;justify-content:space-between;align-items:center";
+      li.style.cssText = "padding:12px;border:1px solid var(--line);border-radius:8px;margin-bottom:8px;background:#fff;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px";
       const playersText = game.status === "answering" ? "In progress" : "Waiting for players";
       li.innerHTML = `
-        <div>
+        <div style="flex:1 1 200px">
           <strong>${game.room_code}</strong>
           <small style="display:block;color:var(--muted);font-size:12px;margin-top:4px">${playersText} · ${game.total_questions || 10} questions</small>
         </div>
-        <button class="button button-secondary" data-room-code="${game.room_code}">Join</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="button button-secondary join-room-btn" data-room-code="${game.room_code}">Join</button>
+          <button class="button button-outline delete-room-btn" data-room-id="${game.id}" data-room-code="${game.room_code}" style="color:#c86e56;border-color:#c86e56">Delete</button>
+        </div>
       `;
       list.appendChild(li);
     });
-    list.querySelectorAll("button[data-room-code]").forEach((btn) => {
+    list.querySelectorAll(".join-room-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
         document.querySelector(".code-input").value = btn.dataset.roomCode;
         showScreen("join");
         document.querySelector("#join input[type=\"text\"]").focus();
+      });
+    });
+    list.querySelectorAll(".delete-room-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const roomCode = btn.dataset.roomCode;
+        const roomId = btn.dataset.roomId;
+        const pwd = prompt(`Enter admin password to delete room ${roomCode}:`);
+        if (pwd !== "admin") {
+          alert("Incorrect admin password.");
+          return;
+        }
+        try {
+          await supabase.from("players").delete().eq("game_id", roomId);
+          await supabase.from("games").delete().eq("id", roomId);
+          btn.closest("li").remove();
+          const remaining = list.querySelectorAll("li");
+          if (remaining.length === 0) {
+            document.querySelector("#rooms-empty").hidden = false;
+          }
+        } catch (cause) {
+          alert(`Failed to delete room: ${cause.message}`);
+        }
       });
     });
   } catch (cause) {
