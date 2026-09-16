@@ -81,25 +81,29 @@ function applyBuzzState(game) {
   if (hasBuzz) {
     clearInterval(timerId);
     const winner = activePlayer?.id === game.buzzed_player_id;
-    document.querySelector("#buzzer-status").textContent = winner
-      ? "You buzzed first! Wait for the host to choose your answer."
-      : "Another player buzzed first. Wait for the host to reveal the answer.";
+    if (isHost) {
+      document.querySelector("#reveal-answer").disabled = selectedChoice === null;
+    }
+    if (game.buzzed_player_id) {
+      supabase.from("players").select("display_name").eq("id", game.buzzed_player_id).single()
+        .then(({ data: player }) => {
+          if (player) {
+            const buzzedNameStr = player.display_name;
+            buzzedName.textContent = `${buzzedNameStr} buzzed in!`;
+            buzzedInfo.hidden = false;
+            if (!winner && !isHost) {
+              document.querySelector("#buzzer-status").textContent = `Woops, ${buzzedNameStr} buzzed in first!`;
+            }
+            if (winner) {
+              document.querySelector("#buzzer-status").textContent = "You buzzed first! Wait for the host to choose your answer.";
+            }
+          }
+        });
+    }
     document.querySelector("#buzz-in").disabled = true;
     document.querySelector("#admin-review-status").textContent = isHost
       ? "A player buzzed — choose their answer"
       : "A player buzzed first";
-    if (isHost) {
-      document.querySelector("#reveal-answer").disabled = selectedChoice === null;
-      if (game.buzzed_player_id) {
-        supabase.from("players").select("display_name").eq("id", game.buzzed_player_id).single()
-          .then(({ data: player }) => {
-            if (player) {
-              buzzedName.textContent = `${player.display_name} buzzed in!`;
-              buzzedInfo.hidden = false;
-            }
-          });
-      }
-    }
   } else {
     document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
     document.querySelector("#buzz-in").disabled = false;
