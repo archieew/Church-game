@@ -269,17 +269,39 @@ function stopLobbyPolling() {
 }
 
 function startQuizPolling() {
-  if (!activeGame || !isHost) return;
+  if (!activeGame) return;
   stopQuizPolling();
   quizRefreshId = window.setInterval(async () => {
     try {
-      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question").eq("id", activeGame.id).single();
-      if (game && game.buzzed_player_id && !lockedPlayers) {
+      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question, timer_seconds").eq("id", activeGame.id).single();
+      if (!game) return;
+      // Players: detect when admin starts the timer
+      if (!isHost && game.status === "answering" && !game.buzzed_player_id && !timerStarted) {
+        if (Array.isArray(game.question_set) && game.question_set.length) {
+          questionBank.splice(0, questionBank.length, ...game.question_set);
+        }
+        renderQuestion();
+        startTimer();
+        return;
+      }
+      // Host: detect buzz
+      if (isHost && game.buzzed_player_id && !lockedPlayers) {
         applyBuzzState(game);
       }
-      if (game && game.current_question !== currentQuestion) {
+      // Sync question changes
+      if (game.current_question !== currentQuestion) {
         currentQuestion = game.current_question;
         renderQuestion();
+      }
+      // Sync timer changes
+      if (game.timer_seconds !== undefined && game.timer_seconds !== questionTimeLimit) {
+        questionTimeLimit = game.timer_seconds;
+        if (!timerStarted) {
+          secondsLeft = questionTimeLimit;
+          document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
+          document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
+          document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
+        }
       }
     } catch (cause) {
       console.warn("Quiz poll failed:", cause);
