@@ -34,6 +34,7 @@ let realtimeSubscribed = false;
 let stealEnabled = false;
 let stealSelectedChoice = null;
 let buzzInCooldown = false;
+let timerStarted = false;
 
 function saveSession(game, player) {
   if (game) localStorage.setItem("bqb_room_code", game.room_code);
@@ -321,12 +322,23 @@ function setRoomState(game, player) {
         if (isHost && document.querySelector("#quiz").classList.contains("active")) {
           const startTimerRow = document.querySelector("#start-timer-row");
           if (startTimerRow) {
-            if (newRecord.status === "answering" && !newRecord.buzzed_player_id && !timerExpired) {
+            if (newRecord.status === "answering" && !newRecord.buzzed_player_id && !timerExpired && !timerStarted) {
               startTimerRow.hidden = false;
               document.querySelector("#admin-review-status").textContent = "Ready — click 'Start timer' to begin";
             } else {
               startTimerRow.hidden = true;
             }
+          }
+        }
+        if (timerChanged && document.querySelector("#quiz").classList.contains("active")) {
+          secondsLeft = questionTimeLimit;
+          timerExpired = false;
+          document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
+          document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
+          document.querySelector("#timer-value").classList.remove("timer-expired");
+          document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
+          if (!timerStarted) {
+            resetTimer();
           }
         }
         if (newRecord.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
@@ -467,18 +479,21 @@ function renderQuestion() {
 
 function resetTimer() {
   clearInterval(timerId);
+  timerStarted = false;
   secondsLeft = questionTimeLimit;
   document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
   document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
   document.querySelector("#timer-value").classList.remove("timer-expired");
   document.querySelectorAll(".answer").forEach((answer) => { answer.disabled = !isHost; });
   document.querySelector("#lock-answer").disabled = selectedChoice === null;
+  // Disable buzz-in until timer starts
+  document.querySelector("#buzz-in").disabled = true;
+  document.querySelector("#buzzer-status").textContent = "Wait for the host to start the timer";
   // Show start timer button for host, hide for players
   const startTimerRow = document.querySelector("#start-timer-row");
   if (startTimerRow) {
     startTimerRow.hidden = !isHost;
   }
-  // Don't auto-start timer - admin must click "Start timer"
   if (isHost) {
     document.querySelector("#admin-review-status").textContent = "Ready — click 'Start timer' to begin";
   } else {
@@ -487,9 +502,12 @@ function resetTimer() {
 }
 
 function startTimer() {
+  timerStarted = true;
   const startTimerRow = document.querySelector("#start-timer-row");
   if (startTimerRow) startTimerRow.hidden = true;
   document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
+  document.querySelector("#buzz-in").disabled = false;
+  document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
   timerId = setInterval(() => {
     secondsLeft -= 1;
     document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
