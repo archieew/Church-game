@@ -279,6 +279,7 @@ function setRoomState(game, player) {
       }
       if (table === "games" && newRecord) {
         const questionChanged = newRecord.current_question !== activeGame?.current_question;
+        const timerChanged = newRecord.timer_seconds !== undefined && newRecord.timer_seconds !== questionTimeLimit;
         activeGame = newRecord;
         questionTimeLimit = newRecord.timer_seconds ?? questionTimeLimit;
         if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
@@ -291,6 +292,11 @@ function setRoomState(game, player) {
         if (questionChanged && document.querySelector("#quiz").classList.contains("active")) {
           currentQuestion = newRecord.current_question ?? currentQuestion;
           renderQuestion();
+        }
+        if (timerChanged && document.querySelector("#quiz").classList.contains("active")) {
+          secondsLeft = questionTimeLimit;
+          timerExpired = false;
+          resetTimer();
         }
       }
       if (!realtimeSubscribed) {
@@ -446,6 +452,12 @@ function applyLiveTimer() {
   document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
   document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
   document.querySelector("#admin-review-status").textContent = `Timer updated to ${questionTimeLimit} seconds`;
+  if (activeGame) {
+    updateGame(activeGame.id, { timer_seconds: questionTimeLimit })
+      .catch((cause) => {
+        document.querySelector("#admin-review-status").textContent = `Could not sync timer: ${cause.message}`;
+      });
+  }
   resetTimer();
 }
 
