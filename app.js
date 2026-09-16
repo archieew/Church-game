@@ -58,14 +58,22 @@ async function tryRejoinSession() {
       const { data: game } = await supabase.from("games").select("*").eq("room_code", roomCode).single();
       if (game) {
         setRoomState(game, null);
-        showScreen("lobby");
+        if (game.status === "answering" || game.status === "ready_to_reveal" || game.status === "revealed") {
+          showScreen("quiz");
+        } else {
+          showScreen("lobby");
+        }
         return true;
       }
     } else if (playerId) {
       const { data: player } = await supabase.from("players").select("*, games(*)").eq("id", playerId).single();
       if (player && player.games) {
         setRoomState(player.games, player);
-        showScreen("lobby");
+        if (player.games.status === "answering" || player.games.status === "ready_to_reveal" || player.games.status === "revealed") {
+          showScreen("quiz");
+        } else {
+          showScreen("lobby");
+        }
         return true;
       }
     }
