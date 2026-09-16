@@ -23,6 +23,9 @@ create table if not exists public.games (
   timer_seconds integer not null default 15 check (timer_seconds between 5 and 120),
   buzzed_player_id uuid,
   buzzed_at timestamptz,
+  steal_player_id uuid,
+  steal_status text check (steal_status in ('available', 'pending', 'scored')),
+  steal_selected_choice smallint check (steal_selected_choice between 0 and 3),
   admin_connected boolean not null default false,
   created_at timestamptz not null default now()
 );
@@ -70,6 +73,18 @@ begin
     alter table public.games
       add constraint games_buzzed_player_id_fkey
       foreign key (buzzed_player_id) references public.players(id) on delete set null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'games_steal_player_id_fkey'
+  ) then
+    alter table public.games
+      add constraint games_steal_player_id_fkey
+      foreign key (steal_player_id) references public.players(id) on delete set null;
   end if;
 end $$;
 

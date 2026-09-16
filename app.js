@@ -30,6 +30,8 @@ let aiDraft = [];
 let isHost = false;
 let lobbyRefreshId = 0;
 let realtimeSubscribed = false;
+let stealEnabled = false;
+let stealSelectedChoice = null;
 
 function saveSession(game, player) {
   if (game) localStorage.setItem("bqb_room_code", game.room_code);
@@ -286,6 +288,7 @@ function setRoomState(game, player) {
           questionBank.splice(0, questionBank.length, ...newRecord.question_set);
         }
         applyBuzzState(newRecord);
+        applyStealState(newRecord);
         if (newRecord.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
           showScreen("quiz");
         }
@@ -514,12 +517,71 @@ function revealAnswer() {
     if (Number(answer.dataset.choice) === question.correct) answer.classList.add("correct");
     if (Number(answer.dataset.choice) === selectedChoice && !isCorrect) answer.classList.add("incorrect");
   });
-  if (isCorrect) score += Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
-  document.querySelector("#score").textContent = score;
-  const feedback = document.querySelector("#feedback");
-  feedback.className = `feedback ${isCorrect ? "feedback-good" : "feedback-warn"}`;
-  feedback.innerHTML = `<strong>${isCorrect ? "Great answer!" : "Keep learning!"}</strong> ${question.explanation} <span>${question.reference}</span>`;
-  document.querySelector("#admin-review-status").textContent = "Answer revealed — moving to the next question";
+  if (isCorrect) {
+    score += Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
+    document.querySelector("#score").textContent = score;
+    const feedback = document.querySelector("#feedback");
+    feedback.className = "feedback feedback-good";
+    feedback.innerHTML = `<strong>Great answer!</strong> ${question.explanation} <span>${question.reference}</span>`;
+    document.querySelector("#admin-review-status").textContent = "Answer revealed — moving to the next question";
+    document.querySelector("#reveal-answer").disabled = true;
+    setTimeout(() => {
+      currentQuestion += 1;
+      if (currentQuestion >= questionBank.length) {
+        document.querySelector("#results").querySelector(".winner-card strong").innerHTML = `${score} <small>points</small>`;
+        clearInterval(timerId);
+        showScreen("results");
+      } else {
+        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null });
+        renderQuestion();
+      }
+    }, 2200);
+  } else {
+    // Wrong answer - enable steal for other player
+    const feedback = document.querySelector("#feedback");
+    feedback.className = "feedback feedback-warn";
+    feedback.innerHTML = `<strong>Keep learning!</strong> ${question.explanation} <span>${question.reference}</span>`;
+    document.querySelector("#admin-review-status").textContent = "Wrong answer — other player can steal!";
+    document.querySelector("#reveal-answer").disabled = true;
+    enableSteal();
+  }
+}
+
+async function revealStealAnswer() {
+  if (!activeGame || !activeGame.steal_player_id || activeGame.steal_selected_choice === null) return;
+  const question = questionBank[currentQuestion];
+  const stealChoice = activeGame.steal_selected_choice;
+  
+  const isCorrect = stealChoice === question.correct;
+  
+  // Show correct/incorrect for steal answer
+  document.querySelectorAll(".answer").forEach((answer) => {
+    if (Number(answer.dataset.choice) === question.correct) answer.classList.add("correct");
+    if (Number(answer.dataset.choice) === stealChoice && !isCorrect) answer.classList.add("incorrect");
+  });
+  
+  if (isCorrect) {
+    // Award points to steal player
+    const stealPoints = Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
+    document.querySelector("#admin-review-status").textContent = `Steal successful! +${stealPoints} points`;
+    
+    // Update player score
+    await supabase.from("players").update({ score: supabase.rpc("increment", { row_id: activeGame.steal_player_id, amount: stealPoints }) }).eq("id", activeGame.steal_player_id).catch(() => {
+      // Fallback: just add to score directly
+      supabase.from("players").select("score").eq("id", activeGame.steal_player_id).single()
+        .then(({ data: player }) => {
+          if (player) {
+            supabase.from("players").update({ score: player.score + stealPoints }).eq("id", activeGame.steal_player_id);
+          }
+        });
+    });
+  } else {
+    document.querySelector("#admin-review-status").textContent = "Steal failed — moving to next question";
+  }
+  
+  // Mark steal as scored and move to next question
+  await updateGame(activeGame.id, { steal_status: "scored", steal_player_id: null, steal_selected_choice: null });
+  
   document.querySelector("#reveal-answer").disabled = true;
   setTimeout(() => {
     currentQuestion += 1;
@@ -528,10 +590,55 @@ function revealAnswer() {
       clearInterval(timerId);
       showScreen("results");
     } else {
-      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null });
+      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null });
       renderQuestion();
     }
   }, 2200);
+}
+
+function enableSteal() {
+  if (!activeGame) return;
+  stealEnabled = true;
+  updateGame(activeGame.id, { steal_status: "available" })
+    .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not enable steal: ${cause.message}`; });
+}
+
+function applyStealState(game) {
+  const stealPanel = document.querySelector("#steal-panel");
+  const stealAnswers = document.querySelector("#steal-answers");
+  const stealSubmit = document.querySelector("#steal-submit");
+  const stealStatus = document.querySelector("#steal-status");
+  
+  if (game.steal_status === "available" && !isHost && activePlayer && game.buzzed_player_id !== activePlayer.id) {
+    stealEnabled = true;
+    stealPanel.hidden = false;
+    const question = questionBank[currentQuestion];
+    stealAnswers.innerHTML = question.choices.map((choice, idx) =>
+      `<button class="steal-answer-btn" data-choice="${idx}" style="display:block;width:100%;margin:8px 0;padding:14px;border:3px solid #855f34;border-radius:4px;background:#f4d89b;color:#3e2b1a;font:700 17px Fredoka;box-shadow:inset 0 0 0 2px #ffecc1,0 3px 0 #65482c;text-align:left">${choice}</button>`
+    ).join("");
+    stealAnswers.querySelectorAll(".steal-answer-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        stealSelectedChoice = Number(btn.dataset.choice);
+        stealAnswers.querySelectorAll(".steal-answer-btn").forEach((b) => b.classList.toggle("selected", b === btn));
+        stealSubmit.disabled = false;
+      });
+    });
+    stealSubmit.onclick = submitStealAnswer;
+  } else if (game.steal_status === "pending" && isHost) {
+    if (game.steal_player_id) {
+      supabase.from("players").select("display_name").eq("id", game.steal_player_id).single()
+        .then(({ data: player }) => {
+          if (player) {
+            document.querySelector("#admin-review-status").textContent = `${player.display_name} submitted a steal answer!`;
+            document.querySelector("#reveal-answer").disabled = false;
+          }
+        });
+    }
+  } else if (game.steal_status === "scored") {
+    stealPanel.hidden = true;
+    stealEnabled = false;
+    stealSelectedChoice = null;
+  }
 }
 
 document.querySelectorAll("[data-screen]").forEach((control) => {
