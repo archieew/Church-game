@@ -527,6 +527,11 @@ function startTimer() {
   document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
   document.querySelector("#buzz-in").disabled = false;
   document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
+  // Sync timer start to all clients via database
+  if (activeGame) {
+    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit })
+      .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
+  }
   timerId = setInterval(() => {
     secondsLeft -= 1;
     document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
