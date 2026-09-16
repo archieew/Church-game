@@ -550,6 +550,7 @@ function resetTimer() {
 }
 
 function startTimer() {
+  if (timerStarted) return;
   timerStarted = true;
   const startTimerRow = document.querySelector("#start-timer-row");
   if (startTimerRow) startTimerRow.hidden = true;

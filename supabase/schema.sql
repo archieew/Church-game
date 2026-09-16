@@ -165,6 +165,10 @@ create policy "Public can update games"
   using (true)
   with check (true);
 
+create policy "Public can delete games"
+  on public.games for delete
+  using (true);
+
 create policy "Public can read players"
   on public.players for select
   using (true);
@@ -178,6 +182,10 @@ create policy "Public can update player presence"
   using (true)
   with check (true);
 
+create policy "Public can delete players"
+  on public.players for delete
+  using (true);
+
 create policy "Public can read answers"
   on public.game_answers for select
   using (true);
@@ -190,6 +198,10 @@ create policy "Admin can score answers"
   on public.game_answers for update
   using (true)
   with check (true);
+
+create policy "Public can delete answers"
+  on public.game_answers for delete
+  using (true);
 
 alter table public.games replica identity full;
 alter table public.players replica identity full;
