@@ -318,6 +318,17 @@ function setRoomState(game, player) {
         }
         applyBuzzState(newRecord);
         applyStealState(newRecord);
+        // Sync question to players when admin starts the timer
+        if (newRecord.status === "answering" && !newRecord.buzzed_player_id) {
+          if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
+            questionBank.splice(0, questionBank.length, ...newRecord.question_set);
+          }
+          if (!document.querySelector("#quiz").classList.contains("active")) {
+            showScreen("quiz");
+          }
+          renderQuestion();
+          startTimer();
+        }
         // Show/hide start timer button for host based on game status
         if (isHost && document.querySelector("#quiz").classList.contains("active")) {
           const startTimerRow = document.querySelector("#start-timer-row");
