@@ -480,13 +480,26 @@ document.querySelector("#lobby-generate-question").addEventListener("click", asy
   button.textContent = "Generating…";
   try {
     aiDraft = await generateQuestion(topic, document.querySelector("#lobby-ai-category").value, document.querySelector("#lobby-ai-difficulty").value);
-    document.querySelector("#lobby-ai-preview-question").textContent = `${aiDraft.length} questions ready for review`;
+    document.querySelector("#lobby-ai-preview-question").textContent = `${aiDraft.length} questions ready for review — edit if needed`;
     document.querySelector("#lobby-ai-preview-choices").innerHTML = aiDraft.map((question, index) =>
-      `<li><strong>${index + 1}. ${question.text}</strong><br /><small>${question.choices.join(" · ")}</small></li>`
+      `<li class="editable-question" data-index="${index}">
+        <div class="editable-field">
+          <label>Q${index + 1}: <input type="text" class="question-text" value="${question.text.replace(/"/g, '"')}" /></label>
+        </div>
+        <div class="editable-field">
+          <label>A: <input type="text" class="choice-input" value="${question.choices[0].replace(/"/g, '"')}" /></label>
+          <label>B: <input type="text" class="choice-input" value="${question.choices[1].replace(/"/g, '"')}" /></label>
+          <label>C: <input type="text" class="choice-input" value="${question.choices[2].replace(/"/g, '"')}" /></label>
+          <label>D: <input type="text" class="choice-input" value="${question.choices[3].replace(/"/g, '"')}" /></label>
+        </div>
+        <div class="editable-field">
+          <label>Correct (0-3): <input type="number" class="correct-input" min="0" max="3" value="${question.correct}" /></label>
+          <label>Verse: <input type="text" class="reference-input" value="${question.reference.replace(/"/g, '"')}" /></label>
+        </div>
+        <small>${question.explanation}</small>
+      </li>`
     ).join("");
-    document.querySelector("#lobby-ai-preview-meta").textContent = aiDraft.map((question) =>
-      `${question.reference} · ${question.explanation}`
-    ).join(" | ");
+    document.querySelector("#lobby-ai-preview-meta").textContent = "";
     document.querySelector("#lobby-ai-preview").classList.add("visible");
   } catch (cause) {
     error.textContent = cause.message || "Could not generate questions.";
@@ -497,7 +510,23 @@ document.querySelector("#lobby-generate-question").addEventListener("click", asy
 });
 
 document.querySelector("#lobby-use-ai-question").addEventListener("click", () => {
-  if (!aiDraft.length) return;
+  const items = document.querySelectorAll("#lobby-ai-preview-choices .editable-question");
+  if (!items.length) return;
+  
+  const questions = Array.from(items).map((item) => {
+    const text = item.querySelector(".question-text").value.trim();
+    const choices = Array.from(item.querySelectorAll(".choice-input")).map((input) => input.value.trim());
+    const correct = parseInt(item.querySelector(".correct-input").value, 10);
+    const reference = item.querySelector(".reference-input").value.trim();
+    return { text, choices, correct, reference, explanation: "", category: "BIBLE EVENTS" };
+  }).filter((q) => q.text && q.choices.every((c) => c) && q.choices.length === 4 && Number.isInteger(q.correct) && q.correct >= 0 && q.correct <= 3);
+
+  if (questions.length !== 10) {
+    document.querySelector("#lobby-ai-error").textContent = "Please fill in all 10 questions completely (4 choices each, correct 0-3).";
+    return;
+  }
+
+  aiDraft = questions;
   questionBank.splice(0, questionBank.length, ...aiDraft);
   currentQuestion = 0;
   document.querySelector("#lobby-ai-preview").classList.remove("visible");
