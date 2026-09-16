@@ -42,6 +42,39 @@ alter table public.games
 alter table public.games
   add column if not exists buzzed_at timestamptz;
 
+alter table public.games
+  add column if not exists steal_player_id uuid;
+
+alter table public.games
+  add column if not exists steal_status text;
+
+alter table public.games
+  add column if not exists steal_selected_choice smallint;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'games_steal_player_id_fkey'
+  ) then
+    alter table public.games
+      add constraint games_steal_player_id_fkey
+      foreign key (steal_player_id) references public.players(id) on delete set null;
+  end if;
+end $$;
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname = 'games_steal_status_check'
+  ) then
+    alter table public.games
+      add constraint games_steal_status_check
+      check (steal_status is null or steal_status in ('available', 'pending', 'scored'));
+  end if;
+end $$;
+
 do $$
 begin
   if not exists (
