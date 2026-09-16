@@ -1,4 +1,4 @@
-import { createGame, joinGame, listPlayers, subscribeToGame, updateGame, claimBuzzer, generateQuestion, supabaseConfigured } from "./supabase.js";
+import { createGame, joinGame, listPlayers, subscribeToGame, updateGame, claimBuzzer, generateQuestion, supabaseConfigured, supabase } from "./supabase.js";
 
 const screens = document.querySelectorAll(".screen");
 const questionBank = [
@@ -96,10 +96,16 @@ function applyBuzzState(game) {
 function startLobbyPolling() {
   if (!activeGame) return;
   stopLobbyPolling();
-  lobbyRefreshId = window.setInterval(() => {
-    renderLobbyPlayers().catch((cause) => {
+  lobbyRefreshId = window.setInterval(async () => {
+    try {
+      await renderLobbyPlayers();
+      const { data: game } = await supabase.from("games").select("status").eq("id", activeGame.id).single();
+      if (game && game.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
+        showScreen("quiz");
+      }
+    } catch (cause) {
       document.querySelector("#join-error").textContent = cause.message || "Unable to load players.";
-    });
+    }
   }, 2000);
 }
 
