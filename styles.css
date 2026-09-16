@@ -29,6 +29,15 @@
 #quiz .lock-status{color:#31502f}
 #quiz .button-primary{background:#3f6a39}
 #quiz .feedback{background:#fff5d9;border-color:#9b7642;color:#4a3821}
-#quiz .admin-review{background:#e5efd9;border-color:#86a376}
+#quiz .admin-review{background:#e5efd9;border-color:#86a376;display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:18px;padding:15px 18px;border-radius:12px}
+#quiz .admin-review>div{flex:1;min-width:200px}
+#quiz .admin-review .eyebrow{display:block;font-size:9px;margin-bottom:4px}
+#quiz .admin-review strong{font-size:12px}
+#quiz .admin-review .button{padding:10px 13px;font-size:11px}
+#quiz .live-timer-setting{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;font-weight:700}
+#quiz .live-timer-setting select{border:1px solid #dcd4f7;border-radius:7px;padding:7px 5px;background:#fff;color:var(--ink);font:600 11px "DM Sans"}
+#quiz .start-timer-row{display:flex;align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap}
+#quiz .start-timer-row span{font-size:11px;color:var(--muted)}
+#quiz .admin-review-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .buzzed-player-info{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:#fff3e0;border-radius:8px;border:1px solid #ffcc80;font-size:13px}.buzzed-player-info #buzzed-player-name{font-weight:600;color:#e65100}.buzzed-player-info .icon-button{font-size:18px;padding:2px 6px;color:#e65100}
 .editable-question{margin-bottom:16px;padding:16px;background:#fafafa;border:1px solid #e0e0e0;border-radius:8px}.editable-question .editable-field{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}.editable-question .editable-field label{flex:1 1 200px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#555}.editable-question .editable-field input{padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px}.editable-question .editable-field input[type="number"]{width:70px}.editable-question small{display:block;color:#888;font-size:11px;margin-top:6px}

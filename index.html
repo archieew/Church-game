@@ -178,14 +178,17 @@
         </div>
         <div class="feedback" id="feedback" aria-live="polite"></div>
         <div class="admin-review panel host-only">
-          <div><span class="eyebrow">Admin review</span><strong id="admin-review-status">Waiting for all players</strong></div>
+          <div>
+            <span class="eyebrow">Admin review</span>
+            <strong id="admin-review-status" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">Waiting for all players</strong>
+          </div>
           <div id="buzzed-player-info" class="buzzed-player-info" hidden>
             <span id="buzzed-player-name"></span>
             <button class="icon-button" id="dismiss-buzz" aria-label="Dismiss buzz" title="Dismiss">✕</button>
           </div>
-          <div id="start-timer-row" class="start-timer-row" style="display:flex;align-items:center;gap:8px;margin-top:8px">
-            <button class="button button-primary" id="start-timer" style="flex:none">Start timer</button>
-            <span style="font-size:12px;color:var(--muted)">Timer will not start until admin clicks this button</span>
+          <div id="start-timer-row" class="start-timer-row" hidden>
+            <button class="button button-primary" id="start-timer">Start timer</button>
+            <span>Timer will not start until admin clicks this button</span>
           </div>
           <label class="live-timer-setting">Timer
             <select id="live-timer-setting" aria-label="Adjust current question timer">
