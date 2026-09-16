@@ -193,6 +193,11 @@ async function renderLobbyPlayers() {
 function updateQuizRole() {
   document.querySelectorAll(".host-only").forEach((node) => { node.hidden = !isHost; });
   document.querySelector("#player-buzzer").hidden = isHost;
+  // Hide question card container for players
+  const questionLeft = document.querySelector(".question-left");
+  if (questionLeft) {
+    questionLeft.hidden = !isHost;
+  }
 }
 
 function applyBuzzState(game) {
