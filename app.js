@@ -280,8 +280,8 @@ function startQuizPolling() {
     try {
       const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question, timer_seconds").eq("id", activeGame.id).single();
       if (!game) return;
-      // Players: detect when admin starts the timer
-      if (!isHost && game.status === "answering" && !game.buzzed_player_id && !timerStarted) {
+      // Players: detect when admin starts the timer (buzzed_at is set but no one has buzzed)
+      if (!isHost && game.status === "answering" && game.buzzed_at && !game.buzzed_player_id && !timerStarted) {
         if (Array.isArray(game.question_set) && game.question_set.length) {
           questionBank.splice(0, questionBank.length, ...game.question_set);
         }
@@ -354,15 +354,17 @@ function setRoomState(game, player) {
         applyBuzzState(newRecord);
         applyStealState(newRecord);
         // Sync question to players when admin starts the timer
-        if (newRecord.status === "answering" && !newRecord.buzzed_player_id) {
+        if (newRecord.status === "answering" && newRecord.buzzed_at && !newRecord.buzzed_player_id) {
           if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
             questionBank.splice(0, questionBank.length, ...newRecord.question_set);
           }
           if (!document.querySelector("#quiz").classList.contains("active")) {
             showScreen("quiz");
           }
-          renderQuestion();
-          startTimer();
+          if (!timerStarted) {
+            renderQuestion();
+            startTimer();
+          }
         }
         // Show/hide start timer button for host based on game status
         if (isHost && document.querySelector("#quiz").classList.contains("active")) {
@@ -554,9 +556,9 @@ function startTimer() {
   document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
   document.querySelector("#buzz-in").disabled = false;
   document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
-  // Sync timer start to all clients via database
+  // Sync timer start to all clients via database - use buzzed_at as timer-started signal
   if (activeGame) {
-    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit })
+    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, buzzed_at: new Date().toISOString() })
       .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
   }
   timerId = setInterval(() => {
@@ -818,10 +820,6 @@ document.querySelector("#simulate-locks").addEventListener("click", simulateOthe
 document.querySelector("#reveal-answer").addEventListener("click", revealAnswer);
 document.querySelector("#start-timer").addEventListener("click", () => {
   startTimer();
-  if (activeGame) {
-    updateGame(activeGame.id, { status: "answering" })
-      .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
-  }
 });
 document.querySelector("#timer-setting").addEventListener("change", (event) => {
   questionTimeLimit = Number(event.target.value);
