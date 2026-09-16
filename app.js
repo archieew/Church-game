@@ -29,6 +29,7 @@ let unsubscribeGame = () => {};
 let aiDraft = [];
 let isHost = false;
 let lobbyRefreshId = 0;
+let quizRefreshId = 0;
 let realtimeSubscribed = false;
 let stealEnabled = false;
 let stealSelectedChoice = null;
@@ -240,7 +241,7 @@ function startLobbyPolling() {
   lobbyRefreshId = window.setInterval(async () => {
     try {
       await renderLobbyPlayers();
-      const { data: game } = await supabase.from("games").select("status").eq("id", activeGame.id).single();
+      const { data: game } = await supabase.from("games").select("status, buzzed_player_id").eq("id", activeGame.id).single();
       if (game && game.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
         showScreen("quiz");
       }
@@ -250,10 +251,29 @@ function startLobbyPolling() {
   }, 2000);
 }
 
-function stopLobbyPolling() {
-  if (lobbyRefreshId) {
-    window.clearInterval(lobbyRefreshId);
-    lobbyRefreshId = 0;
+function startQuizPolling() {
+  if (!activeGame || !isHost) return;
+  stopQuizPolling();
+  quizRefreshId = window.setInterval(async () => {
+    try {
+      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question").eq("id", activeGame.id).single();
+      if (game && game.buzzed_player_id && !lockedPlayers) {
+        applyBuzzState(game);
+      }
+      if (game && game.current_question !== currentQuestion) {
+        currentQuestion = game.current_question;
+        renderQuestion();
+      }
+    } catch (cause) {
+      console.warn("Quiz poll failed:", cause);
+    }
+  }, 2000);
+}
+
+function stopQuizPolling() {
+  if (quizRefreshId) {
+    window.clearInterval(quizRefreshId);
+    quizRefreshId = 0;
   }
 }
 
@@ -366,6 +386,11 @@ function showScreen(id) {
     startLobbyPolling();
   } else {
     stopLobbyPolling();
+  }
+  if (id === "quiz") {
+    startQuizPolling();
+  } else {
+    stopQuizPolling();
   }
   if (id === "rooms") {
     loadRoomsList();
