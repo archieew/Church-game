@@ -155,6 +155,10 @@
         <div class="feedback" id="feedback" aria-live="polite"></div>
         <div class="admin-review panel host-only">
           <div><span class="eyebrow">Admin review</span><strong id="admin-review-status">Waiting for all players</strong></div>
+          <div id="buzzed-player-info" class="buzzed-player-info" hidden>
+            <span id="buzzed-player-name"></span>
+            <button class="icon-button" id="dismiss-buzz" aria-label="Dismiss buzz" title="Dismiss">✕</button>
+          </div>
           <label class="live-timer-setting">Timer
             <select id="live-timer-setting" aria-label="Adjust current question timer">
               <option value="10">10s</option>

@@ -76,6 +76,8 @@ function applyBuzzState(game) {
   lockedPlayers = hasBuzz ? 1 : 0;
   document.querySelector("#locked-count").textContent = String(lockedPlayers);
   document.querySelector("#lock-status").classList.toggle("locked", hasBuzz);
+  const buzzedInfo = document.querySelector("#buzzed-player-info");
+  const buzzedName = document.querySelector("#buzzed-player-name");
   if (hasBuzz) {
     clearInterval(timerId);
     const winner = activePlayer?.id === game.buzzed_player_id;
@@ -86,12 +88,34 @@ function applyBuzzState(game) {
     document.querySelector("#admin-review-status").textContent = isHost
       ? "A player buzzed — choose their answer"
       : "A player buzzed first";
-    if (isHost) document.querySelector("#reveal-answer").disabled = selectedChoice === null;
+    if (isHost) {
+      document.querySelector("#reveal-answer").disabled = selectedChoice === null;
+      if (game.buzzed_player_id) {
+        supabase.from("players").select("display_name").eq("id", game.buzzed_player_id).single()
+          .then(({ data: player }) => {
+            if (player) {
+              buzzedName.textContent = `${player.display_name} buzzed in!`;
+              buzzedInfo.hidden = false;
+            }
+          });
+      }
+    }
   } else {
     document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
     document.querySelector("#buzz-in").disabled = false;
+    buzzedInfo.hidden = true;
   }
 }
+
+document.querySelector("#dismiss-buzz").addEventListener("click", () => {
+  document.querySelector("#buzzed-player-info").hidden = true;
+  if (activeGame) {
+    updateGame(activeGame.id, { buzzed_player_id: null, buzzed_at: null, status: "answering" })
+      .catch((cause) => {
+        document.querySelector("#admin-review-status").textContent = `Could not dismiss buzz: ${cause.message}`;
+      });
+  }
+});
 
 function startLobbyPolling() {
   if (!activeGame) return;

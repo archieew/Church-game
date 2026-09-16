@@ -28,3 +28,4 @@
 #quiz .button-primary{background:#3f6a39}
 #quiz .feedback{background:#fff5d9;border-color:#9b7642;color:#4a3821}
 #quiz .admin-review{background:#e5efd9;border-color:#86a376}
+.buzzed-player-info{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:#fff3e0;border-radius:8px;border:1px solid #ffcc80;font-size:13px}.buzzed-player-info #buzzed-player-name{font-weight:600;color:#e65100}.buzzed-player-info .icon-button{font-size:18px;padding:2px 6px;color:#e65100}
