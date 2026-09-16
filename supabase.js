@@ -115,7 +115,7 @@ export async function claimBuzzer(gameId, playerId) {
   if (!supabase || !gameId || !playerId) return false;
   const { data, error } = await supabase
     .from("games")
-    .update({ buzzed_player_id: playerId, buzzed_at: new Date().toISOString(), status: "ready_to_reveal" })
+    .update({ buzzed_player_id: playerId, buzzed_at: new Date().toISOString(), status: "answering" })
     .eq("id", gameId)
     .is("buzzed_player_id", null)
     .select("id")

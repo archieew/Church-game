@@ -479,8 +479,15 @@ async function buzzIn() {
   if (isHost || !activeGame || lockedPlayers > 0) return;
   try {
     const claimed = await claimBuzzer(activeGame.id, activePlayer.id);
-    if (claimed) applyBuzzState({ ...activeGame, buzzed_player_id: activePlayer.id });
-    else applyBuzzState({ ...activeGame, buzzed_player_id: "another-player" });
+    if (!claimed) {
+      // Another player already buzzed - wait for realtime update
+      setTimeout(() => {
+        if (activeGame) {
+          supabase.from("games").select("*").eq("id", activeGame.id).single()
+            .then(({ data: game }) => { if (game) applyBuzzState(game); });
+        }
+      }, 500);
+    }
   } catch (cause) {
     document.querySelector("#buzzer-status").textContent = `Could not buzz in: ${cause.message}`;
   }
