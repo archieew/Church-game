@@ -94,7 +94,7 @@ function applyBuzzState(game) {
 }
 
 function startLobbyPolling() {
-  if (!activeGame || !isHost) return;
+  if (!activeGame) return;
   stopLobbyPolling();
   lobbyRefreshId = window.setInterval(() => {
     renderLobbyPlayers().catch((cause) => {
@@ -206,7 +206,9 @@ async function joinRoom() {
 
 function showScreen(id) {
   screens.forEach((screen) => screen.classList.toggle("active", screen.id === id));
-  if (id !== "lobby") {
+  if (id === "lobby") {
+    startLobbyPolling();
+  } else {
     stopLobbyPolling();
   }
   if (id === "quiz") {
@@ -491,6 +493,11 @@ document.querySelector("#create-room").addEventListener("click", (event) => {
 document.querySelector("#join-room").addEventListener("click", (event) => {
   event.preventDefault();
   joinRoom();
+});
+document.querySelector("#refresh-players").addEventListener("click", () => {
+  renderLobbyPlayers().catch((cause) => {
+    document.querySelector("#join-error").textContent = cause.message || "Unable to load players.";
+  });
 });
 
 if (!supabaseConfigured) {
