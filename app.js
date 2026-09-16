@@ -33,6 +33,7 @@ let quizRefreshId = 0;
 let realtimeSubscribed = false;
 let stealEnabled = false;
 let stealSelectedChoice = null;
+let buzzInCooldown = false;
 
 function saveSession(game, player) {
   if (game) localStorage.setItem("bqb_room_code", game.room_code);
@@ -316,6 +317,18 @@ function setRoomState(game, player) {
         }
         applyBuzzState(newRecord);
         applyStealState(newRecord);
+        // Show/hide start timer button for host based on game status
+        if (isHost && document.querySelector("#quiz").classList.contains("active")) {
+          const startTimerRow = document.querySelector("#start-timer-row");
+          if (startTimerRow) {
+            if (newRecord.status === "answering" && !newRecord.buzzed_player_id && !timerExpired) {
+              startTimerRow.hidden = false;
+              document.querySelector("#admin-review-status").textContent = "Ready — click 'Start timer' to begin";
+            } else {
+              startTimerRow.hidden = true;
+            }
+          }
+        }
         if (newRecord.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
           showScreen("quiz");
         }
@@ -460,6 +473,23 @@ function resetTimer() {
   document.querySelector("#timer-value").classList.remove("timer-expired");
   document.querySelectorAll(".answer").forEach((answer) => { answer.disabled = !isHost; });
   document.querySelector("#lock-answer").disabled = selectedChoice === null;
+  // Show start timer button for host, hide for players
+  const startTimerRow = document.querySelector("#start-timer-row");
+  if (startTimerRow) {
+    startTimerRow.hidden = !isHost;
+  }
+  // Don't auto-start timer - admin must click "Start timer"
+  if (isHost) {
+    document.querySelector("#admin-review-status").textContent = "Ready — click 'Start timer' to begin";
+  } else {
+    document.querySelector("#admin-review-status").textContent = "Waiting for the host to start the timer";
+  }
+}
+
+function startTimer() {
+  const startTimerRow = document.querySelector("#start-timer-row");
+  if (startTimerRow) startTimerRow.hidden = true;
+  document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
   timerId = setInterval(() => {
     secondsLeft -= 1;
     document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
@@ -524,7 +554,9 @@ function simulateOtherLocks() {
 }
 
 async function buzzIn() {
-  if (isHost || !activeGame || lockedPlayers > 0) return;
+  if (isHost || !activeGame || lockedPlayers > 0 || buzzInCooldown) return;
+  buzzInCooldown = true;
+  document.querySelector("#buzz-in").disabled = true;
   try {
     const claimed = await claimBuzzer(activeGame.id, activePlayer.id);
     if (!claimed) {
@@ -538,6 +570,15 @@ async function buzzIn() {
     }
   } catch (cause) {
     document.querySelector("#buzzer-status").textContent = `Could not buzz in: ${cause.message}`;
+    document.querySelector("#buzz-in").disabled = false;
+  } finally {
+    // Re-enable buzz button after 1 second cooldown
+    setTimeout(() => {
+      buzzInCooldown = false;
+      if (!lockedPlayers && !answerRevealed) {
+        document.querySelector("#buzz-in").disabled = false;
+      }
+    }, 1000);
   }
 }
 
@@ -706,6 +747,13 @@ document.querySelector("#lock-answer").addEventListener("click", lockAnswer);
 document.querySelector("#buzz-in").addEventListener("click", buzzIn);
 document.querySelector("#simulate-locks").addEventListener("click", simulateOtherLocks);
 document.querySelector("#reveal-answer").addEventListener("click", revealAnswer);
+document.querySelector("#start-timer").addEventListener("click", () => {
+  startTimer();
+  if (activeGame) {
+    updateGame(activeGame.id, { status: "answering" })
+      .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
+  }
+});
 document.querySelector("#timer-setting").addEventListener("change", (event) => {
   questionTimeLimit = Number(event.target.value);
   document.querySelector("#setting-saved").textContent = `${questionTimeLimit} seconds set for the next question.`;
