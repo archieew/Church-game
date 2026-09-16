@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#fffaf0" />
+    <title>Bible Quiz Battle</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .buzzer-button{width:min(90vw,340px);height:180px;border:10px solid #5b3a2f;border-radius:28px;background:#e7b84f;color:#3b2721;font:700 42px Fredoka,sans-serif;box-shadow:inset 0 -12px 0 #c4872f,0 12px 0 #5b3a2f;cursor:pointer}
+      .buzzer-button:active{transform:translateY(8px);box-shadow:inset 0 -5px 0 #c4872f,0 4px 0 #5b3a2f}
+      .buzzer-button:disabled{opacity:.6;cursor:not-allowed}
+      .player-buzzer{grid-column:1/-1;min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:#173f35;border:10px solid #0d2b24;border-radius:24px;color:#fff8df}
+      .player-buzzer p{margin:12px 0 30px;color:#d8e6cf}
+      .player-buzzer .eyebrow{color:#f4c95d}
+      [hidden]{display:none!important}
+      @media (max-width:700px){.buzzer-button{height:150px;font-size:34px}.player-buzzer{min-height:300px}}
+    </style>
+  </head>
+  <body>
+    <div class="decor decor-one"></div>
+    <div class="decor decor-two"></div>
+    <main class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#" data-screen="welcome" aria-label="Bible Quiz Battle home">
+          <span class="brand-mark">✦</span>
+          <span>Bible Quiz <strong>Battle</strong></span>
+        </a>
+        <div class="topbar-actions">
+          <span class="connection-pill"><span class="live-dot"></span> Room online</span>
+          <button class="icon-button" aria-label="Toggle sound">⌁</button>
+        </div>
+      </header>
+
+      <section class="screen active" id="welcome">
+        <div class="hero-copy">
+          <span class="eyebrow">Gather. Guess. Grow.</span>
+          <h1>Faith meets<br /><span>friendly</span> competition.</h1>
+          <p>Challenge your friends to a joyful Bible quiz. Learn something new, cheer each other on, and see who takes the crown.</p>
+          <div class="hero-actions">
+            <button class="button button-primary button-large" data-screen="create">Create a game <span>→</span></button>
+            <button class="button button-secondary button-large" data-screen="join">Join with a code</button>
+          </div>
+          <div class="social-proof">
+            <div class="avatar-stack">
+              <span class="avatar avatar-purple">A</span><span class="avatar avatar-orange">J</span><span class="avatar avatar-blue">M</span><span class="avatar avatar-green">+</span>
+            </div>
+            <span>Made for your small group<br /><strong>2 players per battle</strong></span>
+          </div>
+        </div>
+        <div class="hero-art">
+          <div class="sunburst"></div>
+          <div class="floating-card verse-card">
+            <span class="card-label">Today’s reminder</span>
+            <p>“Be strong and courageous.”</p>
+            <small>Joshua 1:9</small>
+          </div>
+          <div class="trophy">
+            <div class="trophy-cup">♛</div>
+            <div class="trophy-base"></div>
+            <span class="sparkle sparkle-a">✦</span><span class="sparkle sparkle-b">✧</span>
+          </div>
+          <div class="floating-card score-card"><span class="mini-star">★</span><div><strong>+120</strong><small>Great answer!</small></div></div>
+        </div>
+      </section>
+
+      <section class="screen compact-screen" id="create">
+        <div class="form-panel">
+          <button class="back-link" data-screen="welcome">← Back home</button>
+          <span class="eyebrow">Set up your room</span>
+          <h2>Let’s get the<br /><span>good times</span> started.</h2>
+          <p class="muted">Create the room, generate the questions, then share the code with two players.</p>
+          <label>Admin password<input id="create-admin-code" type="password" placeholder="Enter admin password" /></label>
+          <p class="form-error" id="create-admin-error" role="alert"></p>
+          <label>Quiz theme<select><option>Mixed Bible knowledge</option><option>Jesus &amp; His parables</option><option>People of the Bible</option></select></label>
+          <button class="button button-primary button-full" id="create-room">Create room <span>→</span></button>
+          <p class="form-error" id="create-error" role="alert"></p>
+        </div>
+        <div class="side-note">
+          <span class="quote-mark">“</span>
+          <p>Iron sharpens iron, and one person sharpens another.</p>
+          <small>Proverbs 27:17</small>
+        </div>
+      </section>
+
+      <section class="screen compact-screen" id="join">
+        <div class="form-panel">
+          <button class="back-link" data-screen="welcome">← Back home</button>
+          <span class="eyebrow">Join your friends</span>
+          <h2>Bring your<br /><span>best guess.</span></h2>
+          <p class="muted">Enter the six-character room code your host shared with you.</p>
+          <label>Room code<input class="code-input" maxlength="6" placeholder="e.g. IX0RFI" /></label>
+          <label>Your display name<input type="text" value="Mia" /></label>
+          <button class="button button-primary button-full" id="join-room">Join room <span>→</span></button>
+          <p class="form-error" id="join-error" role="alert"></p>
+        </div>
+        <div class="side-note join-note">
+          <div class="mini-illustration">?</div>
+          <p>Every question is a chance to learn something wonderful.</p>
+        </div>
+      </section>
+
+      <section class="screen game-screen" id="lobby">
+        <div class="game-header">
+          <div><span class="eyebrow">Waiting room</span><h2>Ready when you are.</h2></div>
+          <div class="room-code"><small>Room code</small><strong>—</strong><button aria-label="Copy room code">▣</button></div>
+        </div>
+        <div class="lobby-grid">
+          <div class="players-panel panel">
+            <div class="panel-heading"><h3>Players <span>0/2</span></h3><span class="check-label">Waiting for players</span></div>
+            <div class="player-row"><span class="avatar avatar-purple">♛</span><div><strong>Admin host</strong><small>Managing the game</small></div><span class="host-badge">HOST</span></div>
+            <button class="button button-primary button-full" id="start-battle" data-screen="quiz" disabled>Start the battle <span>→</span></button>
+          </div>
+          <div>
+            <div class="rules-panel panel"><span class="rules-icon">✦</span><h3>How to play</h3><div class="rule"><b>01</b><span>Answer 10 questions together.</span></div><div class="rule"><b>02</b><span>Be quick — speed earns bonus points.</span></div><div class="rule"><b>03</b><span>Learn the verse behind every answer.</span></div></div>
+            <div class="ai-generator panel" id="lobby-admin-tools">
+              <span class="eyebrow">Admin question maker</span>
+              <p class="muted">Generate and approve the 10 questions before sharing the room code.</p>
+              <label>Topic<input id="lobby-ai-topic" type="text" placeholder="e.g. David and Goliath" /></label>
+              <div class="ai-fields">
+                <select id="lobby-ai-category" aria-label="Lobby question category"><option value="mixed">Characters + events</option><option value="character">Character</option><option value="event">Event</option></select>
+                <select id="lobby-ai-difficulty" aria-label="Lobby question difficulty"><option value="medium">Medium</option></select>
+              </div>
+              <button class="button button-secondary button-full" id="lobby-generate-question">Generate 10 questions ✦</button>
+              <p class="form-error" id="lobby-ai-error" role="alert"></p>
+              <div class="ai-preview" id="lobby-ai-preview">
+                <strong id="lobby-ai-preview-question"></strong>
+                <ol id="lobby-ai-preview-choices"></ol>
+                <small id="lobby-ai-preview-meta"></small>
+                <button class="button button-primary button-full" id="lobby-use-ai-question">Use these 10 questions</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="screen game-screen" id="quiz">
+        <div class="quiz-top"><div><span class="eyebrow" id="question-count">Question 1 of 10</span><div class="progress"><span id="progress-bar"></span></div></div><div class="timer"><span>⌛</span><strong id="timer-value">0:15</strong><small id="timer-label">seconds left</small></div></div>
+        <div class="question-layout">
+          <div class="question-card host-only"><span class="question-category" id="question-category">PEOPLE OF THE BIBLE</span><h2 id="question-text"></h2><p id="question-hint">Choose the best answer below.</p></div>
+          <div class="answers" id="answers"></div>
+          <div class="player-buzzer" id="player-buzzer" hidden>
+            <span class="eyebrow">Fastest finger first</span>
+            <p id="buzzer-status">Listen to the host, then tap when you know it.</p>
+            <button class="buzzer-button" id="buzz-in">BUZZ IN!</button>
+          </div>
+        </div>
+        <div class="answer-actions host-only">
+          <span class="lock-status" id="lock-status"><span class="live-dot"></span> <strong id="locked-count">0</strong>/2 players buzzed</span>
+          <button class="button button-primary" id="lock-answer" disabled>Confirm selected answer</button>
+        </div>
+        <div class="feedback" id="feedback" aria-live="polite"></div>
+        <div class="admin-review panel host-only">
+          <div><span class="eyebrow">Admin review</span><strong id="admin-review-status">Waiting for all players</strong></div>
+          <label class="live-timer-setting">Timer
+            <select id="live-timer-setting" aria-label="Adjust current question timer">
+              <option value="10">10s</option>
+              <option value="15" selected>15s</option>
+              <option value="20">20s</option>
+              <option value="30">30s</option>
+              <option value="45">45s</option>
+              <option value="60">60s</option>
+            </select>
+          </label>
+          <button class="button button-secondary" id="apply-live-timer">Apply now</button>
+          <button class="button button-secondary" id="simulate-locks">Simulate a buzz</button>
+          <button class="button button-primary" id="reveal-answer" disabled>Reveal answer →</button>
+        </div>
+        <div class="quiz-footer"><span><span class="live-dot"></span> The host reveals the answer after the first buzz</span><strong>Score: <span id="score">0</span> pts</strong></div>
+      </section>
+
+      <section class="screen compact-screen" id="admin">
+        <div class="form-panel">
+          <button class="back-link" data-screen="welcome">← Back home</button>
+          <span class="eyebrow">Simple admin view</span>
+          <h2>Keep the<br /><span>game moving.</span></h2>
+          <p class="muted">For your church event, the admin can monitor the room and control the quiz without taking a player slot.</p>
+          <label>Admin password<input id="admin-code" type="password" placeholder="Enter admin password" /></label>
+          <p class="form-error" id="admin-code-error" role="alert"></p>
+          <button class="button button-primary button-full" id="admin-enter">Open admin controls <span>→</span></button>
+          <div class="admin-controls" id="admin-controls">
+            <div class="admin-status"><span class="live-dot"></span> Connected to room <strong>—</strong></div>
+            <label class="timer-setting">Time per question
+              <select id="timer-setting">
+                <option value="10">10 seconds</option>
+                <option value="15" selected>15 seconds</option>
+                <option value="20">20 seconds</option>
+                <option value="30">30 seconds</option>
+                <option value="45">45 seconds</option>
+                <option value="60">60 seconds</option>
+              </select>
+            </label>
+            <div class="setting-saved" id="setting-saved">Timer applies to the next question.</div>
+            <div class="ai-generator" hidden>
+              <span class="eyebrow">AI question maker</span>
+              <label>Topic<input id="ai-topic" type="text" placeholder="e.g. David and Goliath" /></label>
+              <div class="ai-fields">
+                <select id="ai-category" aria-label="Question category"><option value="mixed">Characters + events</option><option value="character">Character</option><option value="event">Event</option></select>
+                <select id="ai-difficulty" aria-label="Question difficulty"><option value="medium">Medium</option></select>
+              </div>
+              <button class="button button-secondary button-full" id="generate-question">Generate 10 questions ✦</button>
+              <p class="form-error" id="ai-error" role="alert"></p>
+              <div class="ai-preview" id="ai-preview">
+                <strong id="ai-preview-question"></strong>
+                <ol id="ai-preview-choices"></ol>
+                <small id="ai-preview-meta"></small>
+                <button class="button button-primary button-full" id="use-ai-question">Use these 10 questions</button>
+              </div>
+            </div>
+            <button class="button button-secondary button-full" data-screen="lobby">View lobby</button>
+            <button class="button button-secondary button-full" data-screen="quiz">Jump to quiz</button>
+          </div>
+        </div>
+        <div class="side-note join-note"><div class="mini-illustration">✦</div><p>One admin can guide the room while two players compete.</p><small>Admin does not count as a player</small></div>
+      </section>
+
+      <section class="screen game-screen results-screen" id="results">
+        <div class="results-heading"><span class="eyebrow">Game complete</span><h2>Look at you <span>shine!</span></h2><p>What a fun round. Keep growing together!</p></div>
+        <div class="winner-card"><span class="confetti">✦</span><span class="winner-label">SCRIPTURE CHAMPION</span><span class="winner-avatar avatar-purple">J</span><h3>Jordan</h3><strong>840 <small>points</small></strong><span class="winner-message">“You really know your stuff!”</span></div>
+        <div class="final-rankings panel"><div class="panel-heading"><h3>Final standings</h3><span>10 questions</span></div><div class="rank-row"><b>1</b><span class="avatar avatar-purple">J</span><strong>Jordan</strong><span>840 pts</span></div><div class="rank-row"><b>2</b><span class="avatar avatar-orange">M</span><strong>Mia</strong><span>710 pts</span></div><div class="rank-row"><b>3</b><span class="avatar avatar-blue">A</span><strong>Alex</strong><span>650 pts</span></div><div class="rank-row"><b>4</b><span class="avatar avatar-green">S</span><strong>Sam</strong><span>590 pts</span></div></div>
+        <div class="results-actions"><button class="button button-primary" data-screen="quiz">Play again <span>↻</span></button><button class="button button-secondary" data-screen="welcome">Back home</button></div>
+      </section>
+    </main>
+    <script type="module" src="app.js"></script>
+  </body>
+</html>
