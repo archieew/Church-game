@@ -154,17 +154,21 @@
       <section class="screen game-screen" id="quiz">
         <div class="quiz-top"><div><span class="eyebrow" id="question-count">Question 1 of 10</span><div class="progress"><span id="progress-bar"></span></div></div><div class="timer"><span>⌛</span><strong id="timer-value">0:15</strong><small id="timer-label">seconds left</small></div></div>
         <div class="question-layout">
-          <div class="question-card host-only"><span class="question-category" id="question-category">PEOPLE OF THE BIBLE</span><h2 id="question-text"></h2><p id="question-hint">Choose the best answer below.</p></div>
-          <div class="answers" id="answers"></div>
-          <div class="player-buzzer" id="player-buzzer" hidden>
-            <span class="eyebrow">Fastest finger first</span>
-            <p id="buzzer-status">Listen to the host, then tap when you know it.</p>
-            <button class="buzzer-button" id="buzz-in">BUZZ IN!</button>
-            <div id="steal-panel" class="steal-panel" hidden>
-              <span class="eyebrow">Steal opportunity!</span>
-              <p id="steal-status">The other player answered incorrectly. You can steal!</p>
-              <div id="steal-answers" class="steal-answers"></div>
-              <button class="buzzer-button" id="steal-submit" disabled>Submit Steal Answer</button>
+          <div class="question-left">
+            <div class="question-card host-only"><span class="question-category" id="question-category">PEOPLE OF THE BIBLE</span><h2 id="question-text"></h2><p id="question-hint">Choose the best answer below.</p></div>
+          </div>
+          <div class="question-right">
+            <div class="answers" id="answers"></div>
+            <div class="player-buzzer" id="player-buzzer" hidden>
+              <span class="eyebrow">Fastest finger first</span>
+              <p id="buzzer-status">Listen to the host, then tap when you know it.</p>
+              <button class="buzzer-button" id="buzz-in">BUZZ IN!</button>
+              <div id="steal-panel" class="steal-panel" hidden>
+                <span class="eyebrow">Steal opportunity!</span>
+                <p id="steal-status">The other player answered incorrectly. You can steal!</p>
+                <div id="steal-answers" class="steal-answers"></div>
+                <button class="buzzer-button" id="steal-submit" disabled>Submit Steal Answer</button>
+              </div>
             </div>
           </div>
         </div>
