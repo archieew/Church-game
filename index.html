@@ -208,6 +208,16 @@
           <button class="button button-primary" id="reveal-answer" disabled>Reveal answer →</button>
         </div>
         <div class="quiz-footer"><span><span class="live-dot"></span> The host reveals the answer after the first buzz</span><strong>Score: <span id="score">0</span> pts</strong></div>
+        <div id="result-popup" class="result-popup" hidden role="alertdialog" aria-live="assertive">
+          <div class="result-popup-card" id="result-popup-card">
+            <span class="result-popup-emoji" id="result-popup-emoji" aria-hidden="true"></span>
+            <span class="eyebrow" id="result-popup-eyebrow"></span>
+            <h3 id="result-popup-title"></h3>
+            <p id="result-popup-message"></p>
+            <div class="result-popup-answer" id="result-popup-answer" hidden></div>
+            <button class="button button-primary button-full" id="result-popup-action">Got it</button>
+          </div>
+        </div>
       </section>
 
       <section class="screen compact-screen" id="admin">

@@ -66,3 +66,23 @@
 #quiz .admin-review-status{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
 .buzzed-player-info{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 12px;background:#fff3e0;border-radius:8px;border:1px solid #ffcc80;font-size:13px}.buzzed-player-info #buzzed-player-name{font-weight:600;color:#e65100}.buzzed-player-info .icon-button{font-size:18px;padding:2px 6px;color:#e65100}
 .editable-question{margin-bottom:16px;padding:16px;background:#fafafa;border:1px solid #e0e0e0;border-radius:8px}.editable-question .editable-field{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px}.editable-question .editable-field label{flex:1 1 200px;display:flex;flex-direction:column;gap:4px;font-size:12px;color:#555}.editable-question .editable-field input{padding:8px 10px;border:1px solid #ccc;border-radius:4px;font-size:14px}.editable-question .editable-field input[type="number"]{width:70px}.editable-question small{display:block;color:#888;font-size:11px;margin-top:6px}
+/* Round-result popup shown on player screens (wrong answer, steal turn, final reveal). */
+.result-popup{display:none}
+.result-popup.visible{display:flex;position:fixed;inset:0;z-index:60;align-items:center;justify-content:center;padding:20px;background:#16241a8c;backdrop-filter:blur(3px)}
+.result-popup-card{width:min(92vw,400px);padding:26px 24px;background:#fffdf4;border:8px solid #5b7850;border-radius:24px;box-shadow:0 20px 45px #14251a70;text-align:center;animation:popup-in .22s ease-out}
+@keyframes popup-in{from{opacity:0;transform:translateY(14px) scale(.96)}to{opacity:1;transform:none}}
+.result-popup-emoji{display:block;font-size:52px;line-height:1;margin-bottom:8px}
+.result-popup-card .eyebrow{display:block;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:#6b7f5f}
+.result-popup-card h3{margin:6px 0 10px;font:700 30px/1.15 Fredoka,sans-serif;color:#2f4a2a}
+.result-popup-card p{margin:0;color:#4a5c42;font-size:14px;line-height:1.5}
+.result-popup-card .button{margin-top:18px}
+.result-popup-answer{margin-top:14px;padding:12px 14px;background:#eef7e6;border:1px solid #b8cfa6;border-radius:12px;font-size:13px;color:#3c5233}
+.result-popup-answer strong{display:block;font-size:14px;color:#2f4a2a}
+.result-popup.tone-warn .result-popup-card{border-color:#b4553f;background:#fff4f0}
+.result-popup.tone-warn h3{color:#a33f2c}
+.result-popup.tone-turn .result-popup-card{border-color:#d9a622;background:#fffaea}
+.result-popup.tone-turn h3{color:#a97c0b}
+.result-popup.tone-good .result-popup-card{border-color:#3f8a52;background:#f1fbf1}
+.result-popup.tone-good h3{color:#2f7a44}
+.result-popup.tone-reveal .result-popup-card{border-color:#5a63b8;background:#f5f5ff}
+.result-popup.tone-reveal h3{color:#3f479c}
