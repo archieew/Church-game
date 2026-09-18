@@ -205,7 +205,7 @@ function updateQuizRole() {
 function applyBuzzState(game) {
   const hasBuzz = Boolean(game?.buzzed_player_id);
   lockedPlayers = hasBuzz ? 1 : 0;
-  document.querySelector("#locked-count").textContent = String(lockedPlayers);
+  setBuzzStatusText(hasBuzz);
   document.querySelector("#lock-status").classList.toggle("locked", hasBuzz);
   const buzzedInfo = document.querySelector("#buzzed-player-info");
   const buzzedName = document.querySelector("#buzzed-player-name");
@@ -309,10 +309,9 @@ function startQuizPolling() {
         renderQuestion();
       }
 
-      // The host changed the timer length.
+      // The host changed the timer length — reflect it even mid-countdown.
       if (game.timer_seconds !== undefined && game.timer_seconds !== questionTimeLimit) {
-        questionTimeLimit = game.timer_seconds;
-        if (!timerStarted) resetTimer();
+        applyTimerLength(game.timer_seconds);
       }
 
       // Players: the host pressed "Start timer".
@@ -378,14 +377,8 @@ function setRoomState(game, player) {
         if (questionChanged) {
           currentQuestion = newRecord.current_question ?? currentQuestion;
           renderQuestion();
-        } else if (timerChanged && !timerStarted) {
-          secondsLeft = questionTimeLimit;
-          timerExpired = false;
-          document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
-          document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
-          document.querySelector("#timer-value").classList.remove("timer-expired");
-          document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
-          resetTimer();
+        } else if (timerChanged) {
+          applyTimerLength(questionTimeLimit);
         }
 
         // The host pressed "Start timer".
@@ -504,7 +497,7 @@ function renderQuestion() {
   document.querySelector("#progress-bar").style.width = `${((currentQuestion + 1) / questionBank.length) * 100}%`;
   document.querySelector("#feedback").textContent = "";
   document.querySelector("#feedback").className = "feedback";
-  document.querySelector("#locked-count").textContent = "0";
+  setBuzzStatusText(false);
   document.querySelector("#lock-status").className = "lock-status";
   document.querySelector("#lock-answer").disabled = true;
   document.querySelector("#lock-answer").textContent = "Confirm selected answer";
@@ -621,21 +614,52 @@ function formatSeconds(value) {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, "0")}`;
 }
 
-function applyLiveTimer() {
-  if (lockedPlayers > 0 || answerRevealed) return;
-  questionTimeLimit = Number(document.querySelector("#live-timer-setting").value);
+// Only the first buzz matters, so the label must not imply both players need to buzz.
+function setBuzzStatusText(hasBuzz) {
+  const node = document.querySelector("#lock-status-text");
+  if (!node) return;
+  node.textContent = hasBuzz ? "1 player buzzed — first buzz answers" : "Waiting for the first buzz";
+}
+
+// Apply a new timer length everywhere, including while the countdown is already running.
+function applyTimerLength(value) {
+  questionTimeLimit = value;
   secondsLeft = questionTimeLimit;
   timerExpired = false;
   document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
+  document.querySelector("#timer-value").classList.remove("timer-expired");
   document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
-  document.querySelector("#admin-review-status").textContent = `Timer updated to ${questionTimeLimit} seconds`;
+  const liveSetting = document.querySelector("#live-timer-setting");
+  if (liveSetting) liveSetting.value = String(questionTimeLimit);
+  if (timerStarted) {
+    // Extending the time gives the players a fresh window to buzz in.
+    if (!answerRevealed && !lockedPlayers) {
+      document.querySelector("#buzz-in").disabled = false;
+      document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
+    }
+    runCountdown();
+  } else {
+    resetTimer();
+  }
+}
+
+function applyLiveTimer() {
+  const next = Number(document.querySelector("#live-timer-setting").value);
+  if (!next) return;
+  questionTimeLimit = next;
+  document.querySelector("#admin-review-status").textContent = timerStarted
+    ? `Timer reset to ${questionTimeLimit} seconds — still running`
+    : `Timer set to ${questionTimeLimit} seconds`;
   if (activeGame) {
-    updateGame(activeGame.id, { timer_seconds: questionTimeLimit, ...timerResetPatch() })
+    // Only clear the start flag when the countdown has not begun, so a live change
+    // does not stop the other screen's timer.
+    const patch = timerStarted ? {} : timerResetPatch();
+    updateGame(activeGame.id, { timer_seconds: questionTimeLimit, ...patch })
       .catch((cause) => {
         document.querySelector("#admin-review-status").textContent = `Could not sync timer: ${cause.message}`;
       });
   }
-  resetTimer();
+  applyTimerLength(questionTimeLimit);
 }
 
 function selectAnswer(choice) {
@@ -717,7 +741,7 @@ function revealAnswer() {
         clearInterval(timerId);
         showScreen("results");
       } else {
-        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
+        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, timer_seconds: questionTimeLimit, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
         renderQuestion();
       }
     }, 2200);
@@ -783,7 +807,7 @@ async function revealStealAnswer() {
       clearInterval(timerId);
       showScreen("results");
     } else {
-      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
+      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, timer_seconds: questionTimeLimit, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
       renderQuestion();
     }
   }, 2200);
