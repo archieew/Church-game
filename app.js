@@ -328,9 +328,10 @@ function startQuizPolling() {
         beginBuzzPhase({ broadcast: false });
       }
 
-      // Host: a player buzzed in.
-      if (isHost && game.buzzed_player_id && !lockedPlayers) {
-        applyBuzzState(game);
+      // A player buzzed in — every screen must freeze its timer, not just the host.
+      if (game.buzzed_player_id && !lockedPlayers) {
+        activeGame = { ...activeGame, buzzed_player_id: game.buzzed_player_id };
+        applyBuzzState(activeGame);
       }
 
       // Steal state must survive even when Realtime drops out.
@@ -730,8 +731,9 @@ function applyTimerLength(value) {
   const liveSetting = document.querySelector("#live-timer-setting");
   if (liveSetting) liveSetting.value = String(questionTimeLimit);
   if (timerStarted) {
-    // Extending the time gives the players a fresh window to buzz in.
-    if (!answerRevealed && !lockedPlayers) {
+    // Extending the time gives the players a fresh window to buzz in —
+    // unless someone already buzzed, in which case the round is frozen.
+    if (!answerRevealed && !lockedPlayers && !activeGame?.buzzed_player_id) {
       document.querySelector("#buzz-in").disabled = false;
       document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
     }
@@ -792,7 +794,11 @@ async function buzzIn() {
   document.querySelector("#buzz-in").disabled = true;
   try {
     const claimed = await claimBuzzer(activeGame.id, activePlayer.id);
-    if (!claimed) {
+    if (claimed) {
+      // Freeze this screen immediately — do not wait up to 2s for the poll round-trip.
+      activeGame = { ...activeGame, buzzed_player_id: activePlayer.id };
+      applyBuzzState(activeGame);
+    } else {
       // Another player already buzzed - wait for realtime update
       setTimeout(() => {
         if (activeGame && supabase) {
