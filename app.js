@@ -282,11 +282,16 @@ function startQuizPolling() {
       if (!game) return;
       // Players: detect when admin starts the timer (buzzed_at is set but no one has buzzed)
       if (!isHost && game.status === "answering" && game.buzzed_at && !game.buzzed_player_id && !timerStarted) {
+        timerStarted = true;
         if (Array.isArray(game.question_set) && game.question_set.length) {
           questionBank.splice(0, questionBank.length, ...game.question_set);
         }
         renderQuestion();
-        startTimer();
+        // Immediately enable buzz button - no timer dependency
+        document.querySelector("#buzz-in").disabled = false;
+        document.querySelector("#buzzer-status").textContent = "Tap BUZZ IN when you know the answer!";
+        const startTimerRow = document.querySelector("#start-timer-row");
+        if (startTimerRow) startTimerRow.hidden = true;
         return;
       }
       // Host: detect buzz
