@@ -1,4 +1,4 @@
-import { createGame, joinGame, listPlayers, subscribeToGame, updateGame, claimBuzzer, generateQuestion, supabaseConfigured, supabase } from "./supabase.js";
+import { createGame, joinGame, listPlayers, subscribeToGame, updateGame, claimBuzzer, generateQuestion, supabaseConfigured, supabase, isGameColumnSupported, buildGameSelect, ensureGameColumns } from "./supabase.js";
 
 const screens = document.querySelectorAll(".screen");
 const questionBank = [
@@ -289,9 +289,10 @@ function startQuizPolling() {
     // Preview mode (no Supabase) keeps the game in localStorage, so there is no shared row to poll.
     if (!supabase) return;
     try {
+      const selectColumns = await buildGameSelect(["buzzed_player_id", "buzzed_at", "status", "current_question", "timer_seconds", "question_set", "timer_started", "steal_player_id", "steal_selected_choice", "steal_status"]);
       const { data: game } = await supabase
         .from("games")
-        .select("buzzed_player_id, status, current_question, timer_seconds, timer_started, question_set, steal_player_id, steal_selected_choice, steal_status")
+        .select(selectColumns)
         .eq("id", activeGame.id)
         .maybeSingle();
       if (!game) return;
@@ -314,8 +315,8 @@ function startQuizPolling() {
         if (!timerStarted) resetTimer();
       }
 
-      // Players: the host pressed "Start timer" (timer_started flag).
-      if (!isHost && game.timer_started && !game.buzzed_player_id && !timerStarted) {
+      // Players: the host pressed "Start timer".
+      if (!isHost && timerStartSignal(game) && !game.buzzed_player_id && !timerStarted) {
         renderQuestion();
         beginBuzzPhase({ broadcast: false });
       }
@@ -388,7 +389,7 @@ function setRoomState(game, player) {
         }
 
         // The host pressed "Start timer".
-        if (newRecord.status === "answering" && newRecord.timer_started && !newRecord.buzzed_player_id && !timerStarted) {
+        if (newRecord.status === "answering" && timerStartSignal(newRecord) && !newRecord.buzzed_player_id && !timerStarted) {
           if (!document.querySelector("#quiz").classList.contains("active")) showScreen("quiz");
           renderQuestion();
           beginBuzzPhase({ broadcast: false });
@@ -556,6 +557,24 @@ function resetTimer() {
   }
 }
 
+// Supabase rejects an entire UPDATE if it references an unknown column, which would
+// silently block the game on a database that has not had schema.sql applied yet.
+// Prefer timer_started, but also write buzzed_at so the timer still syncs either way.
+function timerStartPatch() {
+  return { timer_started: true, buzzed_at: new Date().toISOString(), buzzed_player_id: null };
+}
+
+function timerResetPatch() {
+  return { timer_started: false, buzzed_at: null };
+}
+
+function timerStartSignal(record) {
+  if (!record) return false;
+  if (isGameColumnSupported("timer_started")) return Boolean(record.timer_started);
+  // Fallback: the host starting the timer is the only time buzzed_at is set with no buzzer.
+  return Boolean(record.buzzed_at) && !record.buzzed_player_id;
+}
+
 function startTimer() {
   beginBuzzPhase({ broadcast: true });
 }
@@ -571,7 +590,7 @@ function beginBuzzPhase({ broadcast }) {
   document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
   // The host is the single writer of the timer_started flag.
   if (broadcast && activeGame && supabase) {
-    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, timer_started: true })
+    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, ...timerStartPatch() })
       .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
   }
   runCountdown();
@@ -608,7 +627,7 @@ function applyLiveTimer() {
   document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
   document.querySelector("#admin-review-status").textContent = `Timer updated to ${questionTimeLimit} seconds`;
   if (activeGame) {
-    updateGame(activeGame.id, { timer_seconds: questionTimeLimit, timer_started: false })
+    updateGame(activeGame.id, { timer_seconds: questionTimeLimit, ...timerResetPatch() })
       .catch((cause) => {
         document.querySelector("#admin-review-status").textContent = `Could not sync timer: ${cause.message}`;
       });
@@ -695,7 +714,7 @@ function revealAnswer() {
         clearInterval(timerId);
         showScreen("results");
       } else {
-        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, timer_started: false });
+        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
         renderQuestion();
       }
     }, 2200);
@@ -713,7 +732,7 @@ function revealAnswer() {
 async function revealStealAnswer() {
   if (!activeGame) return;
   // Pull the freshest steal submission so a fast click cannot miss the player's answer.
-  if (supabase) {
+  if (supabase && isGameColumnSupported("steal_player_id") && isGameColumnSupported("steal_selected_choice")) {
     const { data: fresh } = await supabase
       .from("games")
       .select("steal_player_id, steal_selected_choice")
@@ -761,7 +780,7 @@ async function revealStealAnswer() {
       clearInterval(timerId);
       showScreen("results");
     } else {
-      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, timer_started: false });
+      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, ...timerResetPatch() });
       renderQuestion();
     }
   }, 2200);
@@ -772,6 +791,10 @@ async function submitStealAnswer() {
   if (!activeGame || isHost || !activePlayer || stealSelectedChoice === null) return;
   const stealSubmit = document.querySelector("#steal-submit");
   const stealStatus = document.querySelector("#steal-status");
+  if (!isGameColumnSupported("steal_status")) {
+    stealStatus.textContent = "Steal needs the database migration — run supabase/schema.sql in Supabase.";
+    return;
+  }
   stealSubmit.disabled = true;
   try {
     await updateGame(activeGame.id, {
@@ -788,6 +811,10 @@ async function submitStealAnswer() {
 
 function enableSteal() {
   if (!activeGame) return;
+  if (!isGameColumnSupported("steal_status")) {
+    document.querySelector("#admin-review-status").textContent = "Steal needs the database migration — run supabase/schema.sql in Supabase.";
+    return;
+  }
   stealEnabled = true;
   updateGame(activeGame.id, { steal_status: "available" })
     .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not enable steal: ${cause.message}`; });
@@ -850,7 +877,7 @@ document.querySelectorAll("[data-screen]").forEach((control) => {
   control.addEventListener("click", (event) => {
     event.preventDefault();
     if (control.dataset.screen === "quiz" && activeGame) {
-      updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, timer_started: false })
+      updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, ...timerResetPatch() })
         .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start round: ${cause.message}`; });
     }
     showScreen(control.dataset.screen);
@@ -1027,4 +1054,13 @@ document.querySelector("#rejoin-room").addEventListener("click", () => {
 
 if (!supabaseConfigured) {
   document.querySelector(".connection-pill").innerHTML = '<span class="live-dot"></span> Preview mode';
+}
+// Tell the host when the database is missing columns declared in supabase/schema.sql.
+if (supabaseConfigured) {
+  ensureGameColumns().then((missing) => {
+    if (!missing.length) return;
+    const pill = document.querySelector(".connection-pill");
+    if (pill) pill.innerHTML = '<span class="live-dot"></span> Database needs migration';
+    console.warn(`Supabase is missing these games columns: ${missing.join(", ")}. Run supabase/schema.sql in the Supabase SQL editor to unlock timer sync and steal.`);
+  });
 }

@@ -8,6 +8,44 @@ export const supabase = supabaseConfigured
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+// Columns the app relies on that may be missing from a database that has not had
+// supabase/schema.sql applied yet.
+const OPTIONAL_GAME_COLUMNS = ["timer_started", "steal_player_id", "steal_status", "steal_selected_choice"];
+const unsupportedGameColumns = new Set();
+
+export function isGameColumnSupported(column) {
+  return !unsupportedGameColumns.has(column);
+}
+
+export function getUnsupportedGameColumns() {
+  return [...unsupportedGameColumns];
+}
+
+// Probe which optional columns actually exist. Supabase rejects the whole UPDATE when
+// any referenced column is unknown, so we must know what we are allowed to write.
+let detectionPromise = null;
+export function ensureGameColumns() {
+  if (!detectionPromise) detectionPromise = detectGameColumns();
+  return detectionPromise;
+}
+
+export async function detectGameColumns() {
+  if (!supabase) return [];
+  await Promise.all(OPTIONAL_GAME_COLUMNS.map(async (column) => {
+    const { error } = await supabase.from("games").select(column).limit(1);
+    if (error) unsupportedGameColumns.add(column);
+    else unsupportedGameColumns.delete(column);
+  }));
+  return getUnsupportedGameColumns();
+}
+
+// Build a SELECT list that only names columns this database actually has, so a
+// missing column can never fail the whole query.
+export async function buildGameSelect(columns) {
+  await ensureGameColumns();
+  return columns.filter((column) => isGameColumnSupported(column)).join(", ");
+}
+
 export async function generateQuestion(topic, category = "mixed", difficulty = "medium") {
   if (!supabase) throw new Error("Supabase is not configured.");
   const { data, error } = await supabase.functions.invoke("generate-question", {
@@ -170,7 +208,15 @@ export async function updateGame(gameId, updates) {
     }
     return;
   }
-  const { error } = await supabase.from("games").update(updates).eq("id", gameId);
+  await ensureGameColumns();
+  // Drop columns this database does not have, so a single missing column cannot
+  // break the whole atomic UPDATE (which would silently block the game).
+  const safeUpdates = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (isGameColumnSupported(key)) safeUpdates[key] = value;
+  }
+  if (!Object.keys(safeUpdates).length) return;
+  const { error } = await supabase.from("games").update(safeUpdates).eq("id", gameId);
   if (error) throw error;
 }
 
