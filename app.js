@@ -35,6 +35,8 @@ let stealEnabled = false;
 let stealSelectedChoice = null;
 let buzzInCooldown = false;
 let timerStarted = false;
+let lastStealStatus = null;
+let lastStealPlayerId = null;
 
 function saveSession(game, player) {
   if (game) localStorage.setItem("bqb_room_code", game.room_code);
@@ -214,28 +216,33 @@ function applyBuzzState(game) {
       document.querySelector("#reveal-answer").disabled = selectedChoice === null;
     }
     if (game.buzzed_player_id) {
-      supabase.from("players").select("display_name").eq("id", game.buzzed_player_id).single()
-        .then(({ data: player }) => {
-          if (player) {
-            const buzzedNameStr = player.display_name;
-            buzzedName.textContent = `${buzzedNameStr} buzzed in!`;
-            buzzedInfo.hidden = false;
-            if (!winner && !isHost) {
-              document.querySelector("#buzzer-status").textContent = `Woops, ${buzzedNameStr} buzzed in first!`;
-            }
-            if (winner) {
-              document.querySelector("#buzzer-status").textContent = "You buzzed first! Wait for the host to choose your answer.";
-            }
-          }
-        });
+      const showBuzzedName = (buzzedNameStr) => {
+        buzzedName.textContent = `${buzzedNameStr} buzzed in!`;
+        buzzedInfo.hidden = false;
+        if (!winner && !isHost) {
+          document.querySelector("#buzzer-status").textContent = `Woops, ${buzzedNameStr} buzzed in first!`;
+        }
+        if (winner) {
+          document.querySelector("#buzzer-status").textContent = "You buzzed first! Wait for the host to choose your answer.";
+        }
+      };
+      if (supabase) {
+        supabase.from("players").select("display_name").eq("id", game.buzzed_player_id).single()
+          .then(({ data: player }) => { if (player) showBuzzedName(player.display_name); });
+      } else {
+        showBuzzedName(winner ? "You" : "A player");
+      }
     }
     document.querySelector("#buzz-in").disabled = true;
     document.querySelector("#admin-review-status").textContent = isHost
       ? "A player buzzed — choose their answer"
       : "A player buzzed first";
   } else {
-    document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
-    document.querySelector("#buzz-in").disabled = false;
+    // Never let players buzz before the host has started the timer.
+    document.querySelector("#buzzer-status").textContent = timerStarted
+      ? "Listen to the host, then tap when you know it."
+      : "Wait for the host to start the timer";
+    document.querySelector("#buzz-in").disabled = !timerStarted;
     buzzedInfo.hidden = true;
   }
 }
@@ -256,7 +263,9 @@ function startLobbyPolling() {
   lobbyRefreshId = window.setInterval(async () => {
     try {
       await renderLobbyPlayers();
-      const { data: game } = await supabase.from("games").select("status, buzzed_player_id").eq("id", activeGame.id).single();
+      // Preview mode (no Supabase) keeps the game in localStorage, so there is no shared row to poll.
+      if (!supabase) return;
+      const { data: game } = await supabase.from("games").select("status, buzzed_player_id").eq("id", activeGame.id).maybeSingle();
       if (game && game.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
         showScreen("quiz");
       }
@@ -277,42 +286,47 @@ function startQuizPolling() {
   if (!activeGame) return;
   stopQuizPolling();
   quizRefreshId = window.setInterval(async () => {
+    // Preview mode (no Supabase) keeps the game in localStorage, so there is no shared row to poll.
+    if (!supabase) return;
     try {
-      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question, timer_seconds, timer_started").eq("id", activeGame.id).single();
+      const { data: game } = await supabase
+        .from("games")
+        .select("buzzed_player_id, status, current_question, timer_seconds, timer_started, question_set, steal_player_id, steal_selected_choice, steal_status")
+        .eq("id", activeGame.id)
+        .maybeSingle();
       if (!game) return;
-      // Players: detect when admin starts the timer (timer_started flag)
-      if (!isHost && game.timer_started && !game.buzzed_player_id && !timerStarted) {
-        timerStarted = true;
-        if (Array.isArray(game.question_set) && game.question_set.length) {
-          questionBank.splice(0, questionBank.length, ...game.question_set);
-        }
-        renderQuestion();
-        // Immediately enable buzz button
-        document.querySelector("#buzz-in").disabled = false;
-        document.querySelector("#buzzer-status").textContent = "Tap BUZZ IN when you know the answer!";
-        const startTimerRow = document.querySelector("#start-timer-row");
-        if (startTimerRow) startTimerRow.hidden = true;
-        return;
+      activeGame = { ...activeGame, ...game };
+
+      // Keep the admin's approved question set in sync on every client.
+      if (Array.isArray(game.question_set) && game.question_set.length) {
+        questionBank.splice(0, questionBank.length, ...game.question_set);
       }
-      // Host: detect buzz
-      if (isHost && game.buzzed_player_id && !lockedPlayers) {
-        applyBuzzState(game);
-      }
-      // Sync question changes
-      if (game.current_question !== currentQuestion) {
+
+      // The host advanced to a new question.
+      if (typeof game.current_question === "number" && game.current_question !== currentQuestion) {
         currentQuestion = game.current_question;
         renderQuestion();
       }
-      // Sync timer changes
+
+      // The host changed the timer length.
       if (game.timer_seconds !== undefined && game.timer_seconds !== questionTimeLimit) {
         questionTimeLimit = game.timer_seconds;
-        if (!timerStarted) {
-          secondsLeft = questionTimeLimit;
-          document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
-          document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
-          document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
-        }
+        if (!timerStarted) resetTimer();
       }
+
+      // Players: the host pressed "Start timer" (timer_started flag).
+      if (!isHost && game.timer_started && !game.buzzed_player_id && !timerStarted) {
+        renderQuestion();
+        beginBuzzPhase({ broadcast: false });
+      }
+
+      // Host: a player buzzed in.
+      if (isHost && game.buzzed_player_id && !lockedPlayers) {
+        applyBuzzState(game);
+      }
+
+      // Steal state must survive even when Realtime drops out.
+      applyStealState(game);
     } catch (cause) {
       console.warn("Quiz poll failed:", cause);
     }
@@ -353,63 +367,45 @@ function setRoomState(game, player) {
         const timerChanged = newRecord.timer_seconds !== undefined && newRecord.timer_seconds !== questionTimeLimit;
         activeGame = newRecord;
         questionTimeLimit = newRecord.timer_seconds ?? questionTimeLimit;
+
+        // Keep the admin's approved question set in sync.
         if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
           questionBank.splice(0, questionBank.length, ...newRecord.question_set);
         }
-        applyBuzzState(newRecord);
-        applyStealState(newRecord);
-        // Sync question to players when admin starts the timer
-        if (newRecord.status === "answering" && newRecord.timer_started && !newRecord.buzzed_player_id) {
-          if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
-            questionBank.splice(0, questionBank.length, ...newRecord.question_set);
-          }
-          if (!document.querySelector("#quiz").classList.contains("active")) {
-            showScreen("quiz");
-          }
-          if (!timerStarted) {
-            timerStarted = true;
-            renderQuestion();
-            // Enable buzz button for players
-            document.querySelector("#buzz-in").disabled = false;
-            document.querySelector("#buzzer-status").textContent = "Tap BUZZ IN when you know the answer!";
-            const startTimerRow = document.querySelector("#start-timer-row");
-            if (startTimerRow) startTimerRow.hidden = true;
-          }
-        }
-        // Show/hide start timer button for host based on game status
-        if (isHost && document.querySelector("#quiz").classList.contains("active")) {
-          const startTimerRow = document.querySelector("#start-timer-row");
-          if (startTimerRow) {
-            if (newRecord.status === "answering" && !newRecord.buzzed_player_id && !timerExpired && !timerStarted) {
-              startTimerRow.hidden = false;
-              document.querySelector("#admin-review-status").textContent = "Ready — click 'Start timer' to begin";
-            } else {
-              startTimerRow.hidden = true;
-            }
-          }
-        }
-        if (timerChanged && document.querySelector("#quiz").classList.contains("active")) {
+
+        // Rebuild from a clean slate whenever the host moves to a new question.
+        if (questionChanged) {
+          currentQuestion = newRecord.current_question ?? currentQuestion;
+          renderQuestion();
+        } else if (timerChanged && !timerStarted) {
           secondsLeft = questionTimeLimit;
           timerExpired = false;
           document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
           document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
           document.querySelector("#timer-value").classList.remove("timer-expired");
           document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
-          if (!timerStarted) {
-            resetTimer();
-          }
+          resetTimer();
         }
+
+        // The host pressed "Start timer".
+        if (newRecord.status === "answering" && newRecord.timer_started && !newRecord.buzzed_player_id && !timerStarted) {
+          if (!document.querySelector("#quiz").classList.contains("active")) showScreen("quiz");
+          renderQuestion();
+          beginBuzzPhase({ broadcast: false });
+        }
+
+        applyBuzzState(newRecord);
+        applyStealState(newRecord);
+
+        // Players: the host opened the quiz screen.
         if (newRecord.status === "answering" && !document.querySelector("#quiz").classList.contains("active")) {
           showScreen("quiz");
         }
-        if (questionChanged && document.querySelector("#quiz").classList.contains("active")) {
-          currentQuestion = newRecord.current_question ?? currentQuestion;
-          renderQuestion();
-        }
-        if (timerChanged && document.querySelector("#quiz").classList.contains("active")) {
-          secondsLeft = questionTimeLimit;
-          timerExpired = false;
-          resetTimer();
+
+        // Host: offer the "Start timer" control while the question is waiting.
+        if (isHost && document.querySelector("#quiz").classList.contains("active") && !timerStarted) {
+          const startTimerRow = document.querySelector("#start-timer-row");
+          if (startTimerRow) startTimerRow.hidden = false;
         }
       }
       if (!realtimeSubscribed) {
@@ -528,7 +524,8 @@ function renderQuestion() {
   updateQuizRole();
   applyBuzzState(activeGame);
   resetTimer();
-  if (activeGame) {
+  // Only the host owns the shared timer value; players must never write it back.
+  if (activeGame && isHost && activeGame.timer_seconds !== questionTimeLimit) {
     updateGame(activeGame.id, { timer_seconds: questionTimeLimit }).catch((cause) => {
       document.querySelector("#admin-review-status").textContent = `Could not sync timer: ${cause.message}`;
     });
@@ -560,6 +557,11 @@ function resetTimer() {
 }
 
 function startTimer() {
+  beginBuzzPhase({ broadcast: true });
+}
+
+// Shared by the host (broadcast) and players (local only) so every screen ticks together.
+function beginBuzzPhase({ broadcast }) {
   if (timerStarted) return;
   timerStarted = true;
   const startTimerRow = document.querySelector("#start-timer-row");
@@ -567,11 +569,16 @@ function startTimer() {
   document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
   document.querySelector("#buzz-in").disabled = false;
   document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
-  // Sync timer start to all clients via database - use timer_started flag
-  if (activeGame) {
+  // The host is the single writer of the timer_started flag.
+  if (broadcast && activeGame && supabase) {
     updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, timer_started: true })
       .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
   }
+  runCountdown();
+}
+
+function runCountdown() {
+  clearInterval(timerId);
   timerId = setInterval(() => {
     secondsLeft -= 1;
     document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
@@ -601,7 +608,7 @@ function applyLiveTimer() {
   document.querySelector("#timer-label").textContent = `${questionTimeLimit} seconds allowed`;
   document.querySelector("#admin-review-status").textContent = `Timer updated to ${questionTimeLimit} seconds`;
   if (activeGame) {
-    updateGame(activeGame.id, { timer_seconds: questionTimeLimit })
+    updateGame(activeGame.id, { timer_seconds: questionTimeLimit, timer_started: false })
       .catch((cause) => {
         document.querySelector("#admin-review-status").textContent = `Could not sync timer: ${cause.message}`;
       });
@@ -636,7 +643,7 @@ function simulateOtherLocks() {
 }
 
 async function buzzIn() {
-  if (isHost || !activeGame || lockedPlayers > 0 || buzzInCooldown) return;
+  if (isHost || !activeGame || lockedPlayers > 0 || buzzInCooldown || !timerStarted) return;
   buzzInCooldown = true;
   document.querySelector("#buzz-in").disabled = true;
   try {
@@ -644,8 +651,8 @@ async function buzzIn() {
     if (!claimed) {
       // Another player already buzzed - wait for realtime update
       setTimeout(() => {
-        if (activeGame) {
-          supabase.from("games").select("*").eq("id", activeGame.id).single()
+        if (activeGame && supabase) {
+          supabase.from("games").select("*").eq("id", activeGame.id).maybeSingle()
             .then(({ data: game }) => { if (game) applyBuzzState(game); });
         }
       }, 500);
@@ -688,7 +695,7 @@ function revealAnswer() {
         clearInterval(timerId);
         showScreen("results");
       } else {
-        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null });
+        if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, timer_started: false });
         renderQuestion();
       }
     }, 2200);
@@ -704,7 +711,17 @@ function revealAnswer() {
 }
 
 async function revealStealAnswer() {
-  if (!activeGame || !activeGame.steal_player_id || activeGame.steal_selected_choice === null) return;
+  if (!activeGame) return;
+  // Pull the freshest steal submission so a fast click cannot miss the player's answer.
+  if (supabase) {
+    const { data: fresh } = await supabase
+      .from("games")
+      .select("steal_player_id, steal_selected_choice")
+      .eq("id", activeGame.id)
+      .maybeSingle();
+    if (fresh) activeGame = { ...activeGame, ...fresh };
+  }
+  if (!activeGame.steal_player_id || activeGame.steal_selected_choice === null) return;
   const question = questionBank[currentQuestion];
   const stealChoice = activeGame.steal_selected_choice;
   
@@ -721,16 +738,14 @@ async function revealStealAnswer() {
     const stealPoints = Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
     document.querySelector("#admin-review-status").textContent = `Steal successful! +${stealPoints} points`;
     
-    // Update player score
-    await supabase.from("players").update({ score: supabase.rpc("increment", { row_id: activeGame.steal_player_id, amount: stealPoints }) }).eq("id", activeGame.steal_player_id).catch(() => {
-      // Fallback: just add to score directly
-      supabase.from("players").select("score").eq("id", activeGame.steal_player_id).single()
-        .then(({ data: player }) => {
-          if (player) {
-            supabase.from("players").update({ score: player.score + stealPoints }).eq("id", activeGame.steal_player_id);
-          }
-        });
-    });
+    // Update the steal player's score (there is no "increment" RPC, so read then write).
+    if (supabase) {
+      const stealPlayerId = activeGame.steal_player_id;
+      const { data: player } = await supabase.from("players").select("score").eq("id", stealPlayerId).single();
+      if (player) {
+        await supabase.from("players").update({ score: player.score + stealPoints }).eq("id", stealPlayerId);
+      }
+    }
   } else {
     document.querySelector("#admin-review-status").textContent = "Steal failed — moving to next question";
   }
@@ -746,10 +761,29 @@ async function revealStealAnswer() {
       clearInterval(timerId);
       showScreen("results");
     } else {
-      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null });
+      if (activeGame) updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, buzzed_player_id: null, buzzed_at: null, steal_player_id: null, steal_status: null, steal_selected_choice: null, timer_started: false });
       renderQuestion();
     }
   }, 2200);
+}
+
+// Player submits their steal answer; the host then reveals it.
+async function submitStealAnswer() {
+  if (!activeGame || isHost || !activePlayer || stealSelectedChoice === null) return;
+  const stealSubmit = document.querySelector("#steal-submit");
+  const stealStatus = document.querySelector("#steal-status");
+  stealSubmit.disabled = true;
+  try {
+    await updateGame(activeGame.id, {
+      steal_player_id: activePlayer.id,
+      steal_selected_choice: stealSelectedChoice,
+      steal_status: "pending"
+    });
+    stealStatus.textContent = "Steal submitted — waiting for the host to reveal.";
+  } catch (cause) {
+    stealStatus.textContent = `Could not submit steal: ${cause.message}`;
+    stealSubmit.disabled = false;
+  }
 }
 
 function enableSteal() {
@@ -763,25 +797,35 @@ function applyStealState(game) {
   const stealPanel = document.querySelector("#steal-panel");
   const stealAnswers = document.querySelector("#steal-answers");
   const stealSubmit = document.querySelector("#steal-submit");
-  const stealStatus = document.querySelector("#steal-status");
-  
-  if (game.steal_status === "available" && !isHost && activePlayer && game.buzzed_player_id !== activePlayer.id) {
+  const status = game.steal_status ?? null;
+  const canSteal = status === "available" && !isHost && activePlayer && game.buzzed_player_id !== activePlayer.id;
+  if (status !== lastStealStatus) lastStealPlayerId = null;
+
+  if (canSteal) {
     stealEnabled = true;
     stealPanel.hidden = false;
-    const question = questionBank[currentQuestion];
-    stealAnswers.innerHTML = question.choices.map((choice, idx) =>
-      `<button class="steal-answer-btn" data-choice="${idx}" style="display:block;width:100%;margin:8px 0;padding:14px;border:3px solid #855f34;border-radius:4px;background:#f4d89b;color:#3e2b1a;font:700 17px Fredoka;box-shadow:inset 0 0 0 2px #ffecc1,0 3px 0 #65482c;text-align:left">${choice}</button>`
-    ).join("");
-    stealAnswers.querySelectorAll(".steal-answer-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        stealSelectedChoice = Number(btn.dataset.choice);
-        stealAnswers.querySelectorAll(".steal-answer-btn").forEach((b) => b.classList.toggle("selected", b === btn));
-        stealSubmit.disabled = false;
-      });
-    });
-    stealSubmit.onclick = submitStealAnswer;
-  } else if (game.steal_status === "pending" && isHost) {
-    if (game.steal_player_id) {
+    // Only build once: a 2s poll must never wipe the player's selection.
+    if (!stealAnswers.children.length) {
+      const question = questionBank[currentQuestion];
+      if (question) {
+        stealSelectedChoice = null;
+        stealSubmit.disabled = true;
+        stealAnswers.innerHTML = question.choices.map((choice, idx) =>
+          `<button class="steal-answer-btn" data-choice="${idx}" style="display:block;width:100%;margin:8px 0;padding:14px;border:3px solid #855f34;border-radius:4px;background:#f4d89b;color:#3e2b1a;font:700 17px Fredoka;box-shadow:inset 0 0 0 2px #ffecc1,0 3px 0 #65482c;text-align:left">${choice}</button>`
+        ).join("");
+        stealAnswers.querySelectorAll(".steal-answer-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            stealSelectedChoice = Number(btn.dataset.choice);
+            stealAnswers.querySelectorAll(".steal-answer-btn").forEach((b) => b.classList.toggle("selected", b === btn));
+            stealSubmit.disabled = false;
+          });
+        });
+        stealSubmit.onclick = submitStealAnswer;
+      }
+    }
+  } else if (status === "pending" && isHost && game.steal_player_id && game.steal_player_id !== lastStealPlayerId) {
+    lastStealPlayerId = game.steal_player_id;
+    if (supabase) {
       supabase.from("players").select("display_name").eq("id", game.steal_player_id).single()
         .then(({ data: player }) => {
           if (player) {
@@ -790,18 +834,23 @@ function applyStealState(game) {
           }
         });
     }
-  } else if (game.steal_status === "scored") {
+  } else {
+    // Hide/reset the panel for every other state, including the player who already missed.
     stealPanel.hidden = true;
-    stealEnabled = false;
-    stealSelectedChoice = null;
+    if (status !== "available") {
+      stealEnabled = false;
+      stealSelectedChoice = null;
+      stealAnswers.innerHTML = "";
+    }
   }
+  lastStealStatus = status;
 }
 
 document.querySelectorAll("[data-screen]").forEach((control) => {
   control.addEventListener("click", (event) => {
     event.preventDefault();
     if (control.dataset.screen === "quiz" && activeGame) {
-      updateGame(activeGame.id, { status: "answering", current_question: currentQuestion })
+      updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, timer_started: false })
         .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start round: ${cause.message}`; });
     }
     showScreen(control.dataset.screen);
@@ -828,7 +877,14 @@ document.querySelector("#admin-enter").addEventListener("click", () => {
 document.querySelector("#lock-answer").addEventListener("click", lockAnswer);
 document.querySelector("#buzz-in").addEventListener("click", buzzIn);
 document.querySelector("#simulate-locks").addEventListener("click", simulateOtherLocks);
-document.querySelector("#reveal-answer").addEventListener("click", revealAnswer);
+document.querySelector("#reveal-answer").addEventListener("click", () => {
+  // If the other player submitted a steal answer, judge that instead.
+  if (activeGame?.steal_status === "pending") {
+    revealStealAnswer();
+  } else {
+    revealAnswer();
+  }
+});
 document.querySelector("#start-timer").addEventListener("click", () => {
   startTimer();
 });
