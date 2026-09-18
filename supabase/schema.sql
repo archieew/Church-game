@@ -151,57 +151,71 @@ alter table public.players enable row level security;
 alter table public.questions enable row level security;
 alter table public.game_answers enable row level security;
 
+-- Policies are dropped and recreated so this whole file can be re-run safely.
+drop policy if exists "Public can read approved questions" on public.questions;
 create policy "Public can read approved questions"
   on public.questions for select
   using (approved = true);
 
+drop policy if exists "Public can read games" on public.games;
 create policy "Public can read games"
   on public.games for select
   using (true);
 
+drop policy if exists "Public can create games" on public.games;
 create policy "Public can create games"
   on public.games for insert
   with check (true);
 
+drop policy if exists "Public can update games" on public.games;
 create policy "Public can update games"
   on public.games for update
   using (true)
   with check (true);
 
+drop policy if exists "Public can delete games" on public.games;
 create policy "Public can delete games"
   on public.games for delete
   using (true);
 
+drop policy if exists "Public can read players" on public.players;
 create policy "Public can read players"
   on public.players for select
   using (true);
 
+drop policy if exists "Public can join games" on public.players;
 create policy "Public can join games"
   on public.players for insert
   with check (true);
 
+drop policy if exists "Public can update player presence" on public.players;
 create policy "Public can update player presence"
   on public.players for update
   using (true)
   with check (true);
 
+drop policy if exists "Public can delete players" on public.players;
 create policy "Public can delete players"
   on public.players for delete
   using (true);
 
+drop policy if exists "Public can read answers" on public.game_answers;
 create policy "Public can read answers"
   on public.game_answers for select
   using (true);
 
+drop policy if exists "Players can lock answers" on public.game_answers;
 create policy "Players can lock answers"
   on public.game_answers for insert
   with check (true);
 
+drop policy if exists "Admin can score answers" on public.game_answers;
 create policy "Admin can score answers"
   on public.game_answers for update
   using (true)
   with check (true);
 
+drop policy if exists "Public can delete answers" on public.game_answers;
 create policy "Public can delete answers"
   on public.game_answers for delete
   using (true);
@@ -227,3 +241,6 @@ begin
   alter publication supabase_realtime add table public.game_answers;
 exception when duplicate_object then null;
 end $$;
+-- Ask PostgREST to reload its schema cache so newly added columns are usable right away.
+notify pgrst, 'reload schema';
+
