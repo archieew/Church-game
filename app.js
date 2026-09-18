@@ -278,16 +278,16 @@ function startQuizPolling() {
   stopQuizPolling();
   quizRefreshId = window.setInterval(async () => {
     try {
-      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question, timer_seconds").eq("id", activeGame.id).single();
+      const { data: game } = await supabase.from("games").select("buzzed_player_id, status, current_question, timer_seconds, timer_started").eq("id", activeGame.id).single();
       if (!game) return;
-      // Players: detect when admin starts the timer (buzzed_at is set but no one has buzzed)
-      if (!isHost && game.status === "answering" && game.buzzed_at && !game.buzzed_player_id && !timerStarted) {
+      // Players: detect when admin starts the timer (timer_started flag)
+      if (!isHost && game.timer_started && !game.buzzed_player_id && !timerStarted) {
         timerStarted = true;
         if (Array.isArray(game.question_set) && game.question_set.length) {
           questionBank.splice(0, questionBank.length, ...game.question_set);
         }
         renderQuestion();
-        // Immediately enable buzz button - no timer dependency
+        // Immediately enable buzz button
         document.querySelector("#buzz-in").disabled = false;
         document.querySelector("#buzzer-status").textContent = "Tap BUZZ IN when you know the answer!";
         const startTimerRow = document.querySelector("#start-timer-row");
@@ -359,7 +359,7 @@ function setRoomState(game, player) {
         applyBuzzState(newRecord);
         applyStealState(newRecord);
         // Sync question to players when admin starts the timer
-        if (newRecord.status === "answering" && newRecord.buzzed_at && !newRecord.buzzed_player_id) {
+        if (newRecord.status === "answering" && newRecord.timer_started && !newRecord.buzzed_player_id) {
           if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
             questionBank.splice(0, questionBank.length, ...newRecord.question_set);
           }
@@ -367,8 +367,13 @@ function setRoomState(game, player) {
             showScreen("quiz");
           }
           if (!timerStarted) {
+            timerStarted = true;
             renderQuestion();
-            startTimer();
+            // Enable buzz button for players
+            document.querySelector("#buzz-in").disabled = false;
+            document.querySelector("#buzzer-status").textContent = "Tap BUZZ IN when you know the answer!";
+            const startTimerRow = document.querySelector("#start-timer-row");
+            if (startTimerRow) startTimerRow.hidden = true;
           }
         }
         // Show/hide start timer button for host based on game status
@@ -562,9 +567,9 @@ function startTimer() {
   document.querySelector("#admin-review-status").textContent = "Timer running — players can buzz now";
   document.querySelector("#buzz-in").disabled = false;
   document.querySelector("#buzzer-status").textContent = "Listen to the host, then tap when you know it.";
-  // Sync timer start to all clients via database - use buzzed_at as timer-started signal
+  // Sync timer start to all clients via database - use timer_started flag
   if (activeGame) {
-    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, buzzed_at: new Date().toISOString() })
+    updateGame(activeGame.id, { status: "answering", timer_seconds: questionTimeLimit, timer_started: true })
       .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start timer: ${cause.message}`; });
   }
   timerId = setInterval(() => {

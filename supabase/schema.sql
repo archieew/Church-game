@@ -51,6 +51,9 @@ alter table public.games
 alter table public.games
   add column if not exists steal_selected_choice smallint;
 
+alter table public.games
+  add column if not exists timer_started boolean not null default false;
+
 do $$
 begin
   if not exists (
