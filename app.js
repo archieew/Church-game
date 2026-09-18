@@ -559,9 +559,12 @@ function resetTimer() {
 
 // Supabase rejects an entire UPDATE if it references an unknown column, which would
 // silently block the game on a database that has not had schema.sql applied yet.
-// Prefer timer_started, but also write buzzed_at so the timer still syncs either way.
 function timerStartPatch() {
-  return { timer_started: true, buzzed_at: new Date().toISOString(), buzzed_player_id: null };
+  if (isGameColumnSupported("timer_started")) {
+    return { timer_started: true, buzzed_player_id: null };
+  }
+  // Fallback for a database without timer_started: reuse buzzed_at as the start signal.
+  return { buzzed_at: new Date().toISOString(), buzzed_player_id: null };
 }
 
 function timerResetPatch() {
