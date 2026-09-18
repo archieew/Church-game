@@ -271,9 +271,22 @@ function startLobbyPolling() {
       await renderLobbyPlayers();
       // Preview mode (no Supabase) keeps the game in localStorage, so there is no shared row to poll.
       if (!supabase) return;
-      const { data: game } = await supabase.from("games").select("status, buzzed_player_id").eq("id", activeGame.id).maybeSingle();
+      const { data: game } = await supabase.from("games").select("status, buzzed_player_id, question_set").eq("id", activeGame.id).maybeSingle();
       if (game && isRoundInProgress(game.status) && !document.querySelector("#quiz").classList.contains("active")) {
-        showScreen("quiz");
+        // Never let players begin from hardcoded fallback questions: unless the
+        // approved question set is synced, stay in the lobby and keep refreshing it.
+        if (Array.isArray(game.question_set) && game.question_set.length) {
+          activeGame = { ...activeGame, question_set: game.question_set };
+          questionBank.splice(0, questionBank.length, ...game.question_set);
+          showScreen("quiz");
+        } else {
+          const { data: fresh } = await supabase.from("games").select("question_set").eq("id", activeGame.id).maybeSingle();
+          if (Array.isArray(fresh?.question_set) && fresh.question_set.length) {
+            activeGame = { ...activeGame, question_set: fresh.question_set };
+            questionBank.splice(0, questionBank.length, ...fresh.question_set);
+            showScreen("quiz");
+          }
+        }
       }
     } catch (cause) {
       document.querySelector("#join-error").textContent = cause.message || "Unable to load players.";
@@ -403,7 +416,13 @@ function setRoomState(game, player) {
         syncRoundPopups(newRecord);
 
         // Players: the host opened the quiz screen (or a player reconnected mid-round).
-        if (isRoundInProgress(newRecord.status) && !document.querySelector("#quiz").classList.contains("active")) {
+        // Like the lobby poll, wait until the approved question set arrives instead of
+        // rendering the hardcoded offline fallback.
+        if (!isHost && isRoundInProgress(newRecord.status) && !document.querySelector("#quiz").classList.contains("active")) {
+          if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
+            showScreen("quiz");
+          }
+        } else if (isHost && isRoundInProgress(newRecord.status) && !document.querySelector("#quiz").classList.contains("active")) {
           showScreen("quiz");
         }
 
@@ -1166,7 +1185,7 @@ document.querySelector("#lobby-use-ai-question").addEventListener("click", () =>
     const choices = Array.from(item.querySelectorAll(".choice-input")).map((input) => input.value.trim());
     const correct = parseInt(item.querySelector(".correct-input").value, 10);
     const reference = item.querySelector(".reference-input").value.trim();
-    return { text, choices, correct, reference, explanation: "", category: "BIBLE EVENTS" };
+    return { text, choices, correct, reference, explanation: reference ? `See ${reference}.` : "", category: "BIBLE EVENTS" };
   }).filter((q) => q.text && q.choices.every((c) => c) && q.choices.length === 4 && Number.isInteger(q.correct) && q.correct >= 0 && q.correct <= 3);
 
   if (questions.length !== 10) {
