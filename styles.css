@@ -56,7 +56,7 @@
   #quiz .buzzer-button{font-size:24px;padding:16px 32px}
   #quiz .player-buzzer{padding:16px}
 }
-#quiz .answer-actions{justify-content:center;border-top:0;padding-top:4px}
+#quiz .answer-actions{justify-content:space-between;gap:16px;flex-wrap:wrap;border-top:0;padding-top:4px}
 #quiz .lock-status{color:#31502f}
 #quiz .button-primary{background:#3f6a39}
 #quiz .feedback{background:#fff5d9;border-color:#9b7642;color:#4a3821}
