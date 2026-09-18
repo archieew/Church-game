@@ -11,7 +11,7 @@ Deno.serve(async (req) => {
     const k = Deno.env.get("GEMINI_API_KEY");
     if (!b.topic || !k) throw Error(!b.topic ? "Enter a Bible topic first." : "GEMINI_API_KEY is not configured.");
     const p = `Create exactly 10 different simple Bible quiz questions about ${b.topic}. Use short sentences and familiar Bible characters, stories, and facts for children and youth. Avoid trick questions and obscure details. Keep answer choices short and clearly different. Return only JSON: {"questions":[{"category":"BIBLE EVENTS","text":"...","choices":["...","...","...","..."],"correct":0,"reference":"...","explanation":"..."}]}. Use integer correct 0-3 and do not repeat.`;
-    const models = ["gemini-2.0-flash", "gemini-2.5-flash"];
+    const models = ["gemini-3.6-flash", "gemini-2.0-flash"];
     let lastError = "";
     for (const model of models) {
       for (let attempt = 0; attempt < 3; attempt++) {

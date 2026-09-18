@@ -1176,6 +1176,32 @@ document.querySelector("#lobby-generate-question").addEventListener("click", asy
   }
 });
 
+document.querySelector("#lobby-manual-questions").addEventListener("click", () => {
+  const items = Array.from({ length: 10 }, (_, index) => `
+    <li class="editable-question" data-index="${index}">
+      <div class="editable-field">
+        <label>Q${index + 1}: <input type="text" class="question-text" placeholder="Who built the ark?" /></label>
+      </div>
+      <div class="editable-field">
+        <label>A: <input type="text" class="choice-input" placeholder="Noah" /></label>
+        <label>B: <input type="text" class="choice-input" placeholder="Moses" /></label>
+        <label>C: <input type="text" class="choice-input" placeholder="Paul" /></label>
+        <label>D: <input type="text" class="choice-input" placeholder="David" /></label>
+      </div>
+      <div class="editable-field">
+        <label>Correct (0-3): <input type="number" class="correct-input" min="0" max="3" value="0" /></label>
+        <label>Verse: <input type="text" class="reference-input" placeholder="Genesis 6-9" /></label>
+      </div>
+    </li>`
+  ).join("");
+  document.querySelector("#lobby-ai-preview-question").textContent = "10 blank questions ready — fill them in, then click \"Use these 10 questions\"";
+  document.querySelector("#lobby-ai-preview-choices").innerHTML = items;
+  document.querySelector("#lobby-ai-preview-meta").textContent = "";
+  document.querySelector("#lobby-ai-error").textContent = "";
+  document.querySelector("#lobby-ai-preview").classList.add("visible");
+  document.querySelector("#lobby-ai-preview-choices").scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+
 document.querySelector("#lobby-use-ai-question").addEventListener("click", () => {
   const items = document.querySelectorAll("#lobby-ai-preview-choices .editable-question");
   if (!items.length) return;
