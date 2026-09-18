@@ -203,6 +203,7 @@ async function renderLobbyPlayers() {
 function updateQuizRole() {
   document.querySelectorAll(".host-only").forEach((node) => { node.hidden = !isHost; });
   document.querySelector("#player-buzzer").hidden = isHost;
+  document.querySelector("#quiz")?.classList.toggle("host-view", isHost);
   // Hide question card container for players
   const questionLeft = document.querySelector(".question-left");
   if (questionLeft) {
@@ -541,7 +542,6 @@ function resetTimer() {
   timerStarted = false;
   secondsLeft = questionTimeLimit;
   document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
-  document.querySelector("#timer-label").textContent = "seconds left";
   document.querySelector("#timer-value").classList.remove("timer-expired");
   document.querySelectorAll(".answer").forEach((answer) => { answer.disabled = !isHost; });
   document.querySelector("#lock-answer").disabled = selectedChoice === null;
@@ -611,7 +611,6 @@ function runCountdown() {
       clearInterval(timerId);
       timerExpired = true;
       document.querySelector("#timer-value").classList.add("timer-expired");
-      document.querySelector("#timer-label").textContent = "Time is up — waiting for admin";
       document.querySelectorAll(".answer").forEach((answer) => { answer.disabled = true; });
       document.querySelector("#buzz-in").disabled = true;
       document.querySelector("#lock-answer").disabled = true;
@@ -718,7 +717,6 @@ function applyTimerLength(value) {
   timerExpired = false;
   document.querySelector("#timer-value").textContent = formatSeconds(secondsLeft);
   document.querySelector("#timer-value").classList.remove("timer-expired");
-  document.querySelector("#timer-label").textContent = "seconds left";
   const liveSetting = document.querySelector("#live-timer-setting");
   if (liveSetting) liveSetting.value = String(questionTimeLimit);
   if (timerStarted) {
@@ -1085,7 +1083,6 @@ document.querySelector("#start-timer").addEventListener("click", () => {
 document.querySelector("#timer-setting").addEventListener("change", (event) => {
   questionTimeLimit = Number(event.target.value);
   document.querySelector("#setting-saved").textContent = `${questionTimeLimit} seconds set for the next question.`;
-  document.querySelector("#timer-label").textContent = "seconds left";
   document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
 });
 document.querySelector("#apply-live-timer").addEventListener("click", applyLiveTimer);

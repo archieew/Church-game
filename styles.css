@@ -6,6 +6,10 @@
 .answer-actions{display:flex;align-items:center;justify-content:space-between;margin-top:22px}.lock-status{font-size:12px;color:var(--muted)}.lock-status.locked{color:var(--green)}.admin-review{display:flex;align-items:center;gap:12px;margin-top:18px;padding:15px 18px;background:#f2eeff}.admin-review>div{flex:1}.admin-review .eyebrow{display:block;font-size:9px;margin-bottom:4px}.admin-review strong{font-size:12px}.admin-review .button{padding:10px 13px;font-size:11px}.live-timer-setting{display:flex;align-items:center;gap:5px;color:var(--muted);font-size:10px;font-weight:700}.live-timer-setting select{border:1px solid #dcd4f7;border-radius:7px;padding:7px 5px;background:#fff;color:var(--ink);font:600 11px "DM Sans"}.button:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none}
 /* Compact game-board styling inspired by classic Bible quiz games. */
 #quiz{max-width:720px;margin:0 auto;padding-top:34px;background:linear-gradient(180deg,#d8e8d0 0,#a9c597 100%);border:8px solid #5b7850;border-radius:18px;box-shadow:inset 0 0 0 3px #dbe8c6,0 16px 35px #304b3538;padding-left:22px;padding-right:22px}
+#quiz.host-view{max-width:1020px}
+#quiz.host-view .question-layout{flex-wrap:nowrap;justify-content:space-between;gap:28px}
+#quiz.host-view .question-left{flex:1 1 52%;max-width:520px}
+#quiz.host-view .question-right{flex:1 1 48%;max-width:460px}
 #quiz .quiz-top{margin-bottom:18px}
 #quiz .eyebrow{color:#365b36}
 #quiz .progress{height:6px;background:#b8cbaa}
@@ -28,6 +32,8 @@
 #quiz .answer.incorrect{background:#e9aaa0;border-color:#984c40}
 #quiz .buzzer-button{font-size:32px;padding:20px 48px}
 #quiz .timer{display:block}
+#quiz.host-view .admin-review{flex-wrap:nowrap}
+#quiz.host-view .admin-review>div{min-width:0}
 @media (max-width:600px){
   #quiz{max-width:100%;padding:10px}
   #quiz .question-layout{flex-direction:column;align-items:center;gap:12px}
