@@ -16,6 +16,8 @@ const questionBank = [
 
 let currentQuestion = 0;
 let score = 0;
+// Avatar color per final-standing rank (matches the lobby palette).
+const AVATAR_CLASSES = ["avatar-purple", "avatar-orange", "avatar-blue", "avatar-green"];
 let timerId;
 let secondsLeft = 15;
 let questionTimeLimit = 15;
@@ -272,6 +274,10 @@ function startLobbyPolling() {
       // Preview mode (no Supabase) keeps the game in localStorage, so there is no shared row to poll.
       if (!supabase) return;
       const { data: game } = await supabase.from("games").select("status, buzzed_player_id, question_set").eq("id", activeGame.id).maybeSingle();
+      if (game && game.status === "finished" && !document.querySelector("#results").classList.contains("active")) {
+        showResults();
+        return;
+      }
       if (game && isRoundInProgress(game.status) && !document.querySelector("#quiz").classList.contains("active")) {
         // Never let players begin from hardcoded fallback questions: unless the
         // approved question set is synced, stay in the lobby and keep refreshing it.
@@ -316,6 +322,13 @@ function startQuizPolling() {
         .maybeSingle();
       if (!game) return;
       activeGame = { ...activeGame, ...game };
+
+      // Game over — everyone follows the host to the results screen.
+      if (game.status === "finished" && !document.querySelector("#results").classList.contains("active")) {
+        stopQuizPolling();
+        await showResults();
+        return;
+      }
 
       // Keep the admin's approved question set in sync on every client.
       if (Array.isArray(game.question_set) && game.question_set.length) {
@@ -390,6 +403,13 @@ function setRoomState(game, player) {
         const timerChanged = newRecord.timer_seconds !== undefined && newRecord.timer_seconds !== questionTimeLimit;
         activeGame = newRecord;
         questionTimeLimit = newRecord.timer_seconds ?? questionTimeLimit;
+
+        // Game over — follow to the results screen with the real standings.
+        if (newRecord.status === "finished" && !document.querySelector("#results").classList.contains("active")) {
+          stopQuizPolling();
+          showResults();
+          return;
+        }
 
         // Keep the admin's approved question set in sync.
         if (Array.isArray(newRecord.question_set) && newRecord.question_set.length) {
@@ -835,9 +855,8 @@ async function advanceQuestion() {
   hideResultPopup();
   currentQuestion += 1;
   if (currentQuestion >= questionBank.length) {
-    document.querySelector("#results").querySelector(".winner-card strong").innerHTML = `${score} <small>points</small>`;
     clearInterval(timerId);
-    showScreen("results");
+    await finishGame();
     return;
   }
   if (activeGame) {
@@ -853,6 +872,98 @@ async function advanceQuestion() {
     }).catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start the next question: ${cause.message}`; });
   }
   renderQuestion();
+}
+
+// Game over: mark the shared row "finished" so player devices leave the quiz
+// too, then every screen renders the real standings from the players table.
+async function finishGame() {
+  if (activeGame && supabase) {
+    try {
+      await updateGame(activeGame.id, {
+        status: "finished",
+        buzzed_player_id: null,
+        steal_player_id: null,
+        steal_status: null,
+        steal_selected_choice: null,
+        ...timerResetPatch()
+      });
+    } catch (cause) {
+      document.querySelector("#admin-review-status").textContent = `Could not finish the game: ${cause.message}`;
+    }
+  }
+  showResults();
+}
+
+// Build the results screen from the real players table — no more placeholders.
+async function showResults() {
+  let players = [];
+  if (supabase && activeGame) {
+    try {
+      const { data } = await supabase
+        .from("players")
+        .select("display_name, score")
+        .eq("game_id", activeGame.id)
+        .order("score", { ascending: false })
+        .order("joined_at", { ascending: true });
+      if (Array.isArray(data)) players = data;
+    } catch (cause) {
+      console.warn("Could not load final standings:", cause);
+    }
+  }
+  if (!players.length) players = [{ display_name: "Player 1", score: 0 }, { display_name: "Player 2", score: 0 }];
+
+  const winnerCard = document.querySelector("#results .winner-card");
+  if (winnerCard) {
+    const tied = players.length > 1 && players[0].score === players[1].score;
+    winnerCard.innerHTML = "";
+    const confetti = document.createElement("span");
+    confetti.className = "confetti";
+    confetti.textContent = "✦";
+    const label = document.createElement("span");
+    label.className = "winner-label";
+    label.textContent = "SCRIPTURE CHAMPION";
+    const avatar = document.createElement("span");
+    avatar.className = `winner-avatar ${AVATAR_CLASSES[0]}`;
+    avatar.textContent = initialOf(players[0].display_name);
+    const name = document.createElement("h3");
+    name.textContent = players[0].display_name;
+    const points = document.createElement("strong");
+    points.innerHTML = `${players[0].score} <small>points</small>`;
+    const message = document.createElement("span");
+    message.className = "winner-message";
+    message.textContent = tied ? "It is a tie — well played by both!" : "You really know your stuff!";
+    winnerCard.append(confetti, label, avatar, name, points, message);
+    winnerCard.hidden = false;
+  }
+
+  const rankings = document.querySelector("#results .final-rankings");
+  if (rankings) {
+    const count = questionBank.length || activeGame?.total_questions || 10;
+    const heading = rankings.querySelector(".panel-heading");
+    if (heading) heading.innerHTML = `<h3>Final standings</h3><span>${count} questions</span>`;
+    rankings.querySelectorAll(".rank-row").forEach((row) => row.remove());
+    players.forEach((player, index) => {
+      const row = document.createElement("div");
+      row.className = "rank-row";
+      const place = document.createElement("b");
+      place.textContent = String(index + 1);
+      const avatar = document.createElement("span");
+      avatar.className = `avatar ${AVATAR_CLASSES[index % AVATAR_CLASSES.length]}`;
+      avatar.textContent = initialOf(player.display_name);
+      const name = document.createElement("strong");
+      name.textContent = player.display_name;
+      const pts = document.createElement("span");
+      pts.textContent = `${player.score} pts`;
+      row.append(place, avatar, name, pts);
+      rankings.append(row);
+    });
+  }
+  showScreen("results");
+}
+
+function initialOf(name) {
+  const letter = String(name ?? "").trim().charAt(0).toUpperCase();
+  return letter || "?";
 }
 
 // Both players missed — show the correct answer, then move on.
@@ -881,8 +992,20 @@ function judgeFirstAnswer() {
     if (isCorrect && idx === question.correct) answer.classList.add("correct");
   });
   if (isCorrect) {
-    score += Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
+    const earned = Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
+    score += earned;
     document.querySelector("#score").textContent = score;
+    // Persist to the buzzing player's row so the final standings are real
+    // on every screen (steal points were already saved the same way).
+    if (supabase && activeGame?.buzzed_player_id) {
+      const buzzedPlayerId = activeGame.buzzed_player_id;
+      (async () => {
+        const { data: player } = await supabase.from("players").select("score").eq("id", buzzedPlayerId).single();
+        if (player) {
+          await supabase.from("players").update({ score: player.score + earned }).eq("id", buzzedPlayerId);
+        }
+      })().catch((cause) => { console.warn("Could not save first-buzz points:", cause); });
+    }
     const feedback = document.querySelector("#feedback");
     feedback.className = "feedback feedback-good";
     feedback.innerHTML = `<strong>Great answer!</strong> ${question.explanation} <span>${question.reference}</span>`;
@@ -1075,13 +1198,48 @@ function applyStealState(game) {
 document.querySelectorAll("[data-screen]").forEach((control) => {
   control.addEventListener("click", (event) => {
     event.preventDefault();
-    if (control.dataset.screen === "quiz" && activeGame) {
+    const target = control.dataset.screen;
+    // Host pressed "Play again" on the results screen: reset scores and send
+    // both players back to question 1 together.
+    if (target === "quiz" && isHost && document.querySelector("#results").classList.contains("active")) {
+      restartGame();
+      return;
+    }
+    if (target === "quiz" && activeGame) {
       updateGame(activeGame.id, { status: "answering", current_question: currentQuestion, ...timerResetPatch() })
         .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not start round: ${cause.message}`; });
     }
-    showScreen(control.dataset.screen);
+    showScreen(target);
   });
 });
+
+// Host-only: zero every player's score and restart the shared game at question 1.
+async function restartGame() {
+  if (supabase && activeGame) {
+    try {
+      const { error } = await supabase.from("players").update({ score: 0 }).eq("game_id", activeGame.id);
+      if (error) throw error;
+      await updateGame(activeGame.id, {
+        status: "answering",
+        current_question: 0,
+        timer_seconds: questionTimeLimit,
+        buzzed_player_id: null,
+        buzzed_at: null,
+        steal_player_id: null,
+        steal_status: null,
+        steal_selected_choice: null,
+        ...timerResetPatch()
+      });
+    } catch (cause) {
+      document.querySelector("#admin-review-status").textContent = `Could not restart: ${cause.message}`;
+    }
+  }
+  score = 0;
+  currentQuestion = 0;
+  document.querySelector("#score").textContent = "0";
+  showScreen("quiz");
+  renderQuestion();
+}
 
 function startQuiz() {
   if (currentQuestion === 0 && !document.querySelector("#answers").children.length) renderQuestion();
