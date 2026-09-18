@@ -707,12 +707,13 @@ function syncRoundPopups(game) {
     key = `revealed-${currentQuestion}`;
     payload = { emoji: "📖", eyebrow: "The correct answer", title: correctLabel, message: question.explanation, detail: `Reference: ${question.reference}`, tone: "reveal", actionLabel: "Continue" };
   } else if (game.steal_status === "scored" && game.status === "answering") {
-    // Steal was judged: right = stolen points, wrong = nobody got it.
-    const stealWasRight = lastStealWasCorrect;
-    key = `steal-scored-${currentQuestion}-${stealWasRight ? "right" : "wrong"}`;
-    payload = stealWasRight
-      ? { emoji: "🏆", eyebrow: "Steal successful", title: "That is right — points stolen!", message: question.explanation, detail: `Reference: ${question.reference}`, tone: "good", actionLabel: "Continue" }
-      : { emoji: "❌", eyebrow: "Steal answer", title: "Still wrong!", message: `Nobody got it. The correct answer is ${correctLabel}.`, detail: `Reference: ${question.reference}`, tone: "warn", actionLabel: "Got it" };
+    // Steal was judged correct — points stolen (host keeps the round open briefly).
+    key = `steal-scored-${currentQuestion}-right`;
+    payload = { emoji: "🏆", eyebrow: "Steal successful", title: "That is right — points stolen!", message: question.explanation, detail: `Reference: ${question.reference}`, tone: "good", actionLabel: "Continue" };
+  } else if (game.steal_status === "scored" && game.status === "revealed") {
+    // Steal was judged wrong — nobody got it; safe to reveal the answer now.
+    key = `steal-scored-${currentQuestion}-wrong`;
+    payload = { emoji: "❌", eyebrow: "Steal answer", title: "Still wrong!", message: `Nobody got it. The correct answer is ${correctLabel}.`, detail: `Reference: ${question.reference}`, tone: "warn", actionLabel: "Got it" };
   } else if (game.steal_status === "available") {
     key = `steal-${currentQuestion}-${isBuzzedPlayer ? "own" : "turn"}`;
     payload = isBuzzedPlayer
@@ -873,8 +874,11 @@ function judgeFirstAnswer() {
   answerRevealed = true;
   const isCorrect = selectedChoice === question.correct;
   document.querySelectorAll(".answer").forEach((answer) => {
-    if (Number(answer.dataset.choice) === question.correct) answer.classList.add("correct");
-    if (Number(answer.dataset.choice) === selectedChoice && !isCorrect) answer.classList.add("incorrect");
+    const idx = Number(answer.dataset.choice);
+    // Do NOT reveal the correct answer on a wrong first buzz — the other
+    // player still gets the steal. Only mark the wrong pick red here.
+    if (idx === selectedChoice && !isCorrect) answer.classList.add("incorrect");
+    if (isCorrect && idx === question.correct) answer.classList.add("correct");
   });
   if (isCorrect) {
     score += Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
@@ -896,9 +900,10 @@ function judgeFirstAnswer() {
     setTimeout(() => { advanceQuestion(); }, 2600);
   } else {
     // Wrong answer — instant WRONG popup everywhere, then the other player steals.
+    // Keep the explanation hidden until the reveal so it cannot spoil the answer.
     const feedback = document.querySelector("#feedback");
     feedback.className = "feedback feedback-warn";
-    feedback.innerHTML = `<strong>Wrong answer!</strong> ${question.explanation} <span>${question.reference}</span>`;
+    feedback.innerHTML = `<strong>Wrong answer!</strong> The other player can now steal the points.`;
     document.querySelector("#admin-review-status").textContent = "Wrong! The other player can steal the points";
     showResultPopup({
       emoji: "❌", eyebrow: "Wrong answer", title: "It is wrong!",
@@ -951,9 +956,13 @@ async function revealStealAnswer() {
   }
 
   // Mark the steal as resolved and clear the submission — and record whether
-  // it was right so every screen can show the matching popup.
+  // it was right so every screen can show the matching popup. One atomic
+  // update: a wrong steal flips status to "revealed" in the same write, so
+  // player screens never briefly show the "stolen!" popup by mistake.
   lastStealWasCorrect = isCorrect;
-  await updateGame(activeGame.id, { steal_status: "scored", steal_player_id: null, steal_selected_choice: null });
+  await updateGame(activeGame.id, isCorrect
+    ? { steal_status: "scored", steal_player_id: null, steal_selected_choice: null }
+    : { steal_status: "scored", steal_player_id: null, steal_selected_choice: null, status: "revealed" });
 
   if (isCorrect) {
     // Award points to the stealing player.
@@ -967,9 +976,8 @@ async function revealStealAnswer() {
     }
     setTimeout(() => { advanceQuestion(); }, 2600);
   } else {
-    // Both players missed — show the correct answer, then move on.
-    await updateGame(activeGame.id, { status: "revealed" })
-      .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not update the round: ${cause.message}`; });
+    // Both players missed — the combined update above already switched every
+    // screen to "revealed"; just move on.
     setTimeout(() => { advanceQuestion(); }, 2600);
   }
 }
