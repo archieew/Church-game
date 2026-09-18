@@ -46,6 +46,24 @@ end $$;
 -- Ask PostgREST to reload its schema cache so the new columns are usable immediately.
 notify pgrst, 'reload schema';
 
+-- Statuses the game uses today: a round is open (answering), judged right
+-- (answered_correct), or shown after both players missed (revealed).
+-- Replaces the older check that only knew 'ready_to_reveal'.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'games_status_check' and conrelid = 'public.games'::regclass
+  ) then
+    alter table public.games drop constraint games_status_check;
+  end if;
+  alter table public.games
+    add constraint games_status_check
+    check (status in ('lobby', 'answering', 'answered_correct', 'revealed', 'finished'));
+end $$;
+
+notify pgrst, 'reload schema';
+
 -- VERIFY (optional): run this afterwards and you should see all four columns listed.
 -- select column_name, data_type
 -- from information_schema.columns

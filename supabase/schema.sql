@@ -16,7 +16,8 @@ create table if not exists public.questions (
 create table if not exists public.games (
   id uuid primary key default gen_random_uuid(),
   room_code text not null unique check (room_code ~ '^[A-Z0-9]{6}$'),
-  status text not null default 'lobby' check (status in ('lobby', 'answering', 'ready_to_reveal', 'revealed', 'finished')),
+  status text not null default 'lobby',
+
   current_question integer not null default 0,
   total_questions integer not null default 10 check (total_questions between 1 and 20),
   question_set jsonb not null default '[]'::jsonb,
@@ -242,5 +243,23 @@ begin
 exception when duplicate_object then null;
 end $$;
 -- Ask PostgREST to reload its schema cache so newly added columns are usable right away.
+notify pgrst, 'reload schema';
+
+-- Statuses the game uses today: a round is open (answering), judged right
+-- (answered_correct), or shown after both players missed (revealed).
+-- Plain ALTER TABLE ... ADD CONSTRAINT cannot use IF NOT EXISTS, so guard it.
+do $$
+begin
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'games_status_check' and conrelid = 'public.games'::regclass
+  ) then
+    alter table public.games drop constraint games_status_check;
+  end if;
+  alter table public.games
+    add constraint games_status_check
+    check (status in ('lobby', 'answering', 'answered_correct', 'revealed', 'finished'));
+end $$;
+
 notify pgrst, 'reload schema';
 

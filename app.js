@@ -38,10 +38,10 @@ let timerStarted = false;
 let lastStealStatus = null;
 let lastStealPlayerId = null;
 let lastPopupKey = null;
+let lastStealWasCorrect = false;
 // Statuses where the round is already under way, used to pull reconnecting players
 // straight back to the quiz screen instead of leaving them in the lobby.
-const IN_ROUND_STATUSES = ["answering", "ready_to_reveal", "revealed"];
-
+const IN_ROUND_STATUSES = ["answering", "answered_correct", "revealed"];
 function isRoundInProgress(status) {
   return IN_ROUND_STATUSES.includes(status);
 }
@@ -68,7 +68,7 @@ async function tryRejoinSession() {
       const { data: game } = await supabase.from("games").select("*").eq("room_code", roomCode).single();
       if (game) {
         setRoomState(game, null);
-        if (game.status === "answering" || game.status === "ready_to_reveal" || game.status === "revealed") {
+        if (isRoundInProgress(game.status)) {
           showScreen("quiz");
         } else {
           showScreen("lobby");
@@ -79,7 +79,7 @@ async function tryRejoinSession() {
       const { data: player } = await supabase.from("players").select("*, games(*)").eq("id", playerId).single();
       if (player && player.games) {
         setRoomState(player.games, player);
-        if (player.games.status === "answering" || player.games.status === "ready_to_reveal" || player.games.status === "revealed") {
+        if (isRoundInProgress(player.games.status)) {
           showScreen("quiz");
         } else {
           showScreen("lobby");
@@ -220,9 +220,6 @@ function applyBuzzState(game) {
   if (hasBuzz) {
     clearInterval(timerId);
     const winner = activePlayer?.id === game.buzzed_player_id;
-    if (isHost) {
-      document.querySelector("#reveal-answer").disabled = selectedChoice === null;
-    }
     if (game.buzzed_player_id) {
       const showBuzzedName = (buzzedNameStr) => {
         buzzedName.textContent = `${buzzedNameStr} buzzed in!`;
@@ -339,15 +336,6 @@ function startQuizPolling() {
 
       // Popups for player screens (wrong answer, steal turn, final reveal).
       syncRoundPopups(game);
-
-      // Host: restore the reveal control if the round is waiting on them (e.g. after a reload).
-      if (isHost && game.status === "ready_to_reveal") {
-        const revealButton = document.querySelector("#reveal-answer");
-        if (revealButton) {
-          revealButton.textContent = "Reveal the answer →";
-          revealButton.disabled = false;
-        }
-      }
     } catch (cause) {
       console.warn("Quiz poll failed:", cause);
     }
@@ -522,9 +510,7 @@ function renderQuestion() {
   setBuzzStatusText(false);
   document.querySelector("#lock-status").className = "lock-status";
   document.querySelector("#lock-answer").disabled = true;
-  document.querySelector("#lock-answer").textContent = "Confirm selected answer";
-  document.querySelector("#reveal-answer").disabled = true;
-  document.querySelector("#reveal-answer").textContent = "Reveal answer →";
+  document.querySelector("#lock-answer").textContent = "Judge: correct or wrong";
   document.querySelector("#live-timer-setting").value = String(questionTimeLimit);
   hideResultPopup();
   document.querySelector("#admin-review-status").textContent = isHost ? "Waiting for a player to buzz" : "Waiting for the host";
@@ -695,12 +681,20 @@ function syncRoundPopups(game) {
   let key = null;
   let payload = null;
 
-  if (game.status === "revealed") {
+  if (game.status === "answered_correct") {
+    // First player answered correctly — same instant popup the host already saw.
+    key = `correct-${currentQuestion}`;
+    payload = { emoji: "✅", eyebrow: "Correct answer", title: "That is right!", message: question.explanation, detail: `Reference: ${question.reference}`, tone: "good", actionLabel: "Continue" };
+  } else if (game.status === "revealed") {
     key = `revealed-${currentQuestion}`;
     payload = { emoji: "📖", eyebrow: "The correct answer", title: correctLabel, message: question.explanation, detail: `Reference: ${question.reference}`, tone: "reveal", actionLabel: "Continue" };
-  } else if (game.status === "ready_to_reveal") {
-    key = `both-wrong-${currentQuestion}`;
-    payload = { emoji: "⛔", eyebrow: "Both answers wrong", title: "Still wrong!", message: "Nobody got it. The host will now reveal the correct answer.", tone: "warn", actionLabel: "Got it" };
+  } else if (game.steal_status === "scored" && game.status === "answering") {
+    // Steal was judged: right = stolen points, wrong = nobody got it.
+    const stealWasRight = lastStealWasCorrect;
+    key = `steal-scored-${currentQuestion}-${stealWasRight ? "right" : "wrong"}`;
+    payload = stealWasRight
+      ? { emoji: "🏆", eyebrow: "Steal successful", title: "That is right — points stolen!", message: question.explanation, detail: `Reference: ${question.reference}`, tone: "good", actionLabel: "Continue" }
+      : { emoji: "❌", eyebrow: "Steal answer", title: "Still wrong!", message: `Nobody got it. The correct answer is ${correctLabel}.`, detail: `Reference: ${question.reference}`, tone: "warn", actionLabel: "Got it" };
   } else if (game.steal_status === "available") {
     key = `steal-${currentQuestion}-${isBuzzedPlayer ? "own" : "turn"}`;
     payload = isBuzzedPlayer
@@ -708,10 +702,7 @@ function syncRoundPopups(game) {
       : { emoji: "⚡", eyebrow: "Steal opportunity", title: "It's your turn!", message: "The other player answered incorrectly. Choose your answer below to steal the points.", tone: "turn", actionLabel: "Choose my answer" };
   } else if (game.steal_status === "pending" && !isBuzzedPlayer) {
     key = `steal-sent-${currentQuestion}`;
-    payload = { emoji: "⏳", eyebrow: "Steal submitted", title: "Waiting for the host", message: "The host will judge your steal answer.", tone: "reveal", actionLabel: "Got it" };
-  } else if (game.steal_status === "scored" && game.status === "answering") {
-    key = `stolen-${currentQuestion}`;
-    payload = { emoji: "🏆", eyebrow: "Steal successful", title: "The points were stolen!", message: "Moving on to the next question.", tone: "good", actionLabel: "Got it" };
+    payload = { emoji: "⏳", eyebrow: "Steal submitted", title: "Waiting for the host", message: "The host is judging your steal answer.", tone: "reveal", actionLabel: "Got it" };
   }
 
   if (!payload) return;
@@ -767,7 +758,6 @@ function selectAnswer(choice) {
   selectedChoice = choice;
   document.querySelectorAll(".answer").forEach((answer) => answer.classList.toggle("selected", Number(answer.dataset.choice) === choice));
   document.querySelector("#lock-answer").disabled = false;
-  document.querySelector("#reveal-answer").disabled = false;
 }
 
 function lockAnswer() {
@@ -775,8 +765,9 @@ function lockAnswer() {
   document.querySelectorAll(".answer").forEach((answer) => { answer.disabled = true; });
   document.querySelector("#lock-answer").disabled = true;
   document.querySelector("#lock-answer").textContent = "Answer selected ✓";
-  document.querySelector("#admin-review-status").textContent = "Answer selected — reveal when ready";
-  document.querySelector("#reveal-answer").disabled = false;
+  document.querySelector("#admin-review-status").textContent = "Answer locked in — judging now";
+  // No separate reveal step: judging happens instantly on confirm.
+  judgeFirstAnswer();
 }
 
 function simulateOtherLocks() {
@@ -846,21 +837,20 @@ async function advanceQuestion() {
   renderQuestion();
 }
 
-// Both players missed, so the host reveals the answer before moving on.
-async function revealFinalAnswer() {
+// Both players missed — show the correct answer, then move on.
+async function showFinalAnswer() {
   if (!isHost || !activeGame) return;
   const question = questionBank[currentQuestion];
   const feedback = document.querySelector("#feedback");
   feedback.className = "feedback feedback-warn";
   feedback.innerHTML = `<strong>The answer is ${String.fromCharCode(65 + question.correct)}: ${question.choices[question.correct]}</strong> ${question.explanation} <span>${question.reference}</span>`;
   document.querySelector("#admin-review-status").textContent = "Answer revealed — moving to the next question";
-  document.querySelector("#reveal-answer").disabled = true;
   await updateGame(activeGame.id, { status: "revealed" })
     .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not reveal: ${cause.message}`; });
   setTimeout(() => { advanceQuestion(); }, 2600);
 }
 
-function revealAnswer() {
+function judgeFirstAnswer() {
   if (!isHost || lockedPlayers < 1 || selectedChoice === null || answerRevealed) return;
   const question = questionBank[currentQuestion];
   answerRevealed = true;
@@ -875,16 +865,28 @@ function revealAnswer() {
     const feedback = document.querySelector("#feedback");
     feedback.className = "feedback feedback-good";
     feedback.innerHTML = `<strong>Great answer!</strong> ${question.explanation} <span>${question.reference}</span>`;
-    document.querySelector("#admin-review-status").textContent = "Answer revealed — moving to the next question";
-    document.querySelector("#reveal-answer").disabled = true;
-    setTimeout(() => { advanceQuestion(); }, 2200);
+    document.querySelector("#admin-review-status").textContent = "Correct — moving to the next question";
+    // Instant popup on every screen: host sees it now, players sync via poll.
+    showResultPopup({
+      emoji: "✅", eyebrow: "Correct answer", title: "That is right!",
+      message: `${question.explanation}`, detail: `Reference: ${question.reference}`,
+      tone: "good", actionLabel: "Continue"
+    });
+    if (activeGame) {
+      updateGame(activeGame.id, { status: "answered_correct", steal_status: null })
+        .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not sync result: ${cause.message}`; });
+    }
+    setTimeout(() => { advanceQuestion(); }, 2600);
   } else {
-    // Wrong answer - the other player gets a steal attempt.
+    // Wrong answer — instant WRONG popup everywhere, then the other player steals.
     const feedback = document.querySelector("#feedback");
     feedback.className = "feedback feedback-warn";
-    feedback.innerHTML = `<strong>Keep learning!</strong> ${question.explanation} <span>${question.reference}</span>`;
+    feedback.innerHTML = `<strong>Wrong answer!</strong> ${question.explanation} <span>${question.reference}</span>`;
     document.querySelector("#admin-review-status").textContent = "Wrong! The other player can steal the points";
-    document.querySelector("#reveal-answer").disabled = true;
+    showResultPopup({
+      emoji: "❌", eyebrow: "Wrong answer", title: "It is wrong!",
+      message: "The other player can now steal the points.", tone: "warn", actionLabel: "Got it"
+    });
     enableSteal();
   }
 }
@@ -905,20 +907,40 @@ async function revealStealAnswer() {
   const stealChoice = activeGame.steal_selected_choice;
   
   const isCorrect = stealChoice === question.correct;
-  
+
   // Show correct/incorrect for steal answer
   document.querySelectorAll(".answer").forEach((answer) => {
     if (Number(answer.dataset.choice) === question.correct) answer.classList.add("correct");
     if (Number(answer.dataset.choice) === stealChoice && !isCorrect) answer.classList.add("incorrect");
   });
-  
-  // Mark the steal as resolved and clear the submission.
+
+  // The steal answers the question either way: instant popup on the host screen,
+  // and players sync it via the steal_status change below.
+  if (isCorrect) {
+    const stealPoints = Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
+    document.querySelector("#admin-review-status").textContent = `Steal successful! +${stealPoints} points`;
+    showResultPopup({
+      emoji: "✅", eyebrow: "Steal answer", title: "That is right!",
+      message: `${question.explanation}`, detail: `Reference: ${question.reference}`,
+      tone: "good", actionLabel: "Continue"
+    });
+  } else {
+    document.querySelector("#admin-review-status").textContent = "Steal was wrong too — showing the correct answer";
+    showResultPopup({
+      emoji: "❌", eyebrow: "Steal answer", title: "Still wrong!",
+      message: `Nobody got it. The correct answer is ${String.fromCharCode(65 + question.correct)}: ${question.choices[question.correct]}.`,
+      detail: `Reference: ${question.reference}`, tone: "warn", actionLabel: "Got it"
+    });
+  }
+
+  // Mark the steal as resolved and clear the submission — and record whether
+  // it was right so every screen can show the matching popup.
+  lastStealWasCorrect = isCorrect;
   await updateGame(activeGame.id, { steal_status: "scored", steal_player_id: null, steal_selected_choice: null });
 
   if (isCorrect) {
     // Award points to the stealing player.
     const stealPoints = Math.max(100, 150 - Math.floor((questionTimeLimit - secondsLeft) * 3));
-    document.querySelector("#admin-review-status").textContent = `Steal successful! +${stealPoints} points`;
     if (supabase) {
       const stealPlayerId = activeGame.steal_player_id;
       const { data: player } = await supabase.from("players").select("score").eq("id", stealPlayerId).single();
@@ -926,16 +948,12 @@ async function revealStealAnswer() {
         await supabase.from("players").update({ score: player.score + stealPoints }).eq("id", stealPlayerId);
       }
     }
-    document.querySelector("#reveal-answer").disabled = true;
-    setTimeout(() => { advanceQuestion(); }, 2200);
+    setTimeout(() => { advanceQuestion(); }, 2600);
   } else {
-    // Both players missed, so the host reveals the answer and then moves on.
-    await updateGame(activeGame.id, { status: "ready_to_reveal" })
+    // Both players missed — show the correct answer, then move on.
+    await updateGame(activeGame.id, { status: "revealed" })
       .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not update the round: ${cause.message}`; });
-    document.querySelector("#admin-review-status").textContent = "Both answers were wrong — reveal the answer to continue";
-    const revealButton = document.querySelector("#reveal-answer");
-    revealButton.textContent = "Reveal the answer →";
-    revealButton.disabled = false;
+    setTimeout(() => { advanceQuestion(); }, 2600);
   }
 }
 
@@ -971,12 +989,6 @@ function enableSteal() {
   stealEnabled = true;
   updateGame(activeGame.id, { steal_status: "available" })
     .catch((cause) => { document.querySelector("#admin-review-status").textContent = `Could not enable steal: ${cause.message}`; });
-  // Escape hatch: if the other player never answers, the host can still move on.
-  const revealButton = document.querySelector("#reveal-answer");
-  if (revealButton) {
-    revealButton.textContent = "Skip steal →";
-    revealButton.disabled = false;
-  }
 }
 
 function applyStealState(game) {
@@ -1011,15 +1023,13 @@ function applyStealState(game) {
     }
   } else if (status === "pending" && isHost && game.steal_player_id && game.steal_player_id !== lastStealPlayerId) {
     lastStealPlayerId = game.steal_player_id;
-    // Let the host judge the submitted steal.
-    const revealButton = document.querySelector("#reveal-answer");
-    revealButton.textContent = "Judge steal →";
-    revealButton.disabled = false;
+    // Judge the submitted steal instantly — no reveal button anymore.
+    revealStealAnswer();
     if (supabase) {
       supabase.from("players").select("display_name").eq("id", game.steal_player_id).single()
         .then(({ data: player }) => {
           if (player) {
-            document.querySelector("#admin-review-status").textContent = `${player.display_name} submitted a steal answer!`;
+            document.querySelector("#admin-review-status").textContent = `${player.display_name} submitted a steal answer — judging now`;
           }
         });
     } else {
@@ -1068,20 +1078,6 @@ document.querySelector("#admin-enter").addEventListener("click", () => {
 document.querySelector("#lock-answer").addEventListener("click", lockAnswer);
 document.querySelector("#buzz-in").addEventListener("click", buzzIn);
 document.querySelector("#simulate-locks").addEventListener("click", simulateOtherLocks);
-document.querySelector("#reveal-answer").addEventListener("click", () => {
-  if (activeGame?.status === "ready_to_reveal") {
-    // Both players missed — show the correct answer, then move on.
-    revealFinalAnswer();
-  } else if (activeGame?.steal_status === "available") {
-    // The other player is not answering, so skip the steal and reveal the answer.
-    revealFinalAnswer();
-  } else if (activeGame?.steal_status === "pending") {
-    // The other player submitted a steal answer, so judge that instead.
-    revealStealAnswer();
-  } else {
-    revealAnswer();
-  }
-});
 document.querySelector("#result-popup-action").addEventListener("click", dismissResultPopup);
 document.querySelector("#start-timer").addEventListener("click", () => {
   startTimer();

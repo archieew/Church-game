@@ -177,7 +177,7 @@
         </div>
         <div class="answer-actions host-only">
           <span class="lock-status" id="lock-status"><span class="live-dot"></span> <span id="lock-status-text">Waiting for the first buzz</span></span>
-          <button class="button button-primary" id="lock-answer" disabled>Confirm selected answer</button>
+          <button class="button button-primary" id="lock-answer" disabled>Judge: correct or wrong</button>
         </div>
         <div class="feedback" id="feedback" aria-live="polite"></div>
         <div class="admin-review panel host-only">
@@ -205,9 +205,8 @@
           </label>
           <button class="button button-secondary" id="apply-live-timer">Apply now</button>
           <button class="button button-secondary" id="simulate-locks">Simulate a buzz</button>
-          <button class="button button-primary" id="reveal-answer" disabled>Reveal answer →</button>
         </div>
-        <div class="quiz-footer"><span><span class="live-dot"></span> The host reveals the answer after the first buzz</span><strong>Score: <span id="score">0</span> pts</strong></div>
+        <div class="quiz-footer"><span><span class="live-dot"></span> The host judges the answer right after the first buzz</span><strong>Score: <span id="score">0</span> pts</strong></div>
         <div id="result-popup" class="result-popup" hidden role="alertdialog" aria-live="assertive">
           <div class="result-popup-card" id="result-popup-card">
             <span class="result-popup-emoji" id="result-popup-emoji" aria-hidden="true"></span>
