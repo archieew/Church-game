@@ -46,6 +46,11 @@ end $$;
 -- Ask PostgREST to reload its schema cache so the new columns are usable immediately.
 notify pgrst, 'reload schema';
 
+-- Migrate rows left over from the old flow: 'ready_to_reveal' no longer exists.
+-- Map them to 'revealed' (round over, correct answer shown) before adding the
+-- new check constraint, otherwise the ADD CONSTRAINT fails with 23514.
+update public.games set status = 'revealed' where status = 'ready_to_reveal';
+
 -- Statuses the game uses today: a round is open (answering), judged right
 -- (answered_correct), or shown after both players missed (revealed).
 -- Replaces the older check that only knew 'ready_to_reveal'.

@@ -245,9 +245,11 @@ end $$;
 -- Ask PostgREST to reload its schema cache so newly added columns are usable right away.
 notify pgrst, 'reload schema';
 
--- Statuses the game uses today: a round is open (answering), judged right
--- (answered_correct), or shown after both players missed (revealed).
--- Plain ALTER TABLE ... ADD CONSTRAINT cannot use IF NOT EXISTS, so guard it.
+-- Replace the old status check (which only knew 'ready_to_reveal') with the new one.
+-- 1) Move any leftover rows to a valid status, or ADD CONSTRAINT fails with 23514.
+update public.games set status = 'revealed' where status = 'ready_to_reveal';
+
+-- 2) Swap the constraint.
 do $$
 begin
   if exists (
